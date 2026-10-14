@@ -30,11 +30,44 @@ export async function doctor(args, io) {
   else if (!head(targetDir)) warn('git repository with no commits yet; make a first commit before starting a task (tests cannot be approved and the whitespace check fails until then)')
   else ok('git repository')
 
+  // A plugin install has no lock file and needs only the project configuration
+  // and the checks, which are checked either way.
   const lock = await readLock(targetDir)
-  if (!lock) {
-    fail(`PAACM 3 is not installed here (no ${LOCK_PATH}); run \`paacm init\``)
-    return finish(io, results)
+  if (lock) await checkInstall(targetDir, lock, { ok, warn, fail })
+  else warn(`no project install here (no ${LOCK_PATH}); expected if you use the PAACM plugin, otherwise run \`paacm init\``)
+
+  let config = null
+  try {
+    config = await readJsonOrNull(fromPosix(targetDir, '.agent/paacm.json'))
+    const problems = config ? validateConfig(config) : lock ? ['missing'] : []
+    if (problems.length) fail(`.agent/paacm.json: ${problems.join('; ')}`)
+    else ok(config ? '.agent/paacm.json valid' : 'no .agent/paacm.json; the default configuration applies')
+  } catch (error) {
+    fail(error.message)
   }
+
+  const manifest = await readTextOrNull(fromPosix(targetDir, '.agent/checks.conf'))
+  if (manifest === null) fail('.agent/checks.conf is missing; the gate cannot run (`paacm detect --write` proposes checks)')
+  else {
+    try {
+      const checks = parseManifest(manifest)
+      const onlyDefault = checks.length > 0 && checks.every((c) => c.label === 'diff-whitespace')
+      if (checks.length === 0) fail('.agent/checks.conf has no checks; the gate cannot pass')
+      else if (onlyDefault) warn('.agent/checks.conf has only the default whitespace check; add your lint, type-check and test commands (`paacm detect`)')
+      else ok(`.agent/checks.conf: ${checks.length} check(s)`)
+      const deep = config?.gate?.deepTier ?? 'full'
+      const gaps = missingTiers(checks, deep)
+      if (checks.length && gaps.length) warn(`tier(s) ${gaps.join(', ')} have no checks; DEEP tasks will stop at the gate with exit 3 until they are configured`)
+    } catch (error) {
+      fail(`.agent/checks.conf: ${error.message}`)
+    }
+  }
+  return finish(io, results)
+}
+
+// The project install: installed files, blocks, settings entries, skills and
+// agents, and what the chosen autonomy level needs.
+async function checkInstall(targetDir, lock, { ok, warn, fail }) {
   const content = await loadContent()
   if (lock.version === content.kit.version) ok(`PAACM ${lock.version} (${lock.options.ides.join(', ')}; layer ${lock.options.layer}; autonomy ${lock.options.autonomy})`)
   else warn(`PAACM ${lock.version} is installed; ${content.kit.version} is available (\`paacm upgrade\`)`)
@@ -100,33 +133,6 @@ export async function doctor(args, io) {
     }
   }
 
-  let config = null
-  try {
-    config = await readJsonOrNull(fromPosix(targetDir, '.agent/paacm.json'))
-    const problems = config ? validateConfig(config) : ['missing']
-    if (problems.length) fail(`.agent/paacm.json: ${problems.join('; ')}`)
-    else ok('.agent/paacm.json valid')
-  } catch (error) {
-    fail(error.message)
-  }
-
-  const manifest = await readTextOrNull(fromPosix(targetDir, '.agent/checks.conf'))
-  if (manifest === null) fail('.agent/checks.conf is missing; the gate cannot run')
-  else {
-    try {
-      const checks = parseManifest(manifest)
-      const onlyDefault = checks.length > 0 && checks.every((c) => c.label === 'diff-whitespace')
-      if (checks.length === 0) fail('.agent/checks.conf has no checks; the gate cannot pass')
-      else if (onlyDefault) warn('.agent/checks.conf has only the default whitespace check; add your lint, type-check and test commands (`paacm detect`)')
-      else ok(`.agent/checks.conf: ${checks.length} check(s)`)
-      const deep = config?.gate?.deepTier ?? 'full'
-      const gaps = missingTiers(checks, deep)
-      if (checks.length && gaps.length) warn(`tier(s) ${gaps.join(', ')} have no checks; DEEP tasks will stop at the gate with exit 3 until they are configured`)
-    } catch (error) {
-      fail(`.agent/checks.conf: ${error.message}`)
-    }
-  }
-
   if (['L2', 'L3'].includes(lock.options.autonomy) && lock.options.ides.includes('claude')) {
     if (process.platform === 'linux') {
       const have = (cmd) => spawnSync('sh', ['-c', `command -v ${cmd}`], { stdio: 'ignore' }).status === 0
@@ -140,7 +146,6 @@ export async function doctor(args, io) {
   if (lock.options.layer === 'power' && lock.options.ides.includes('claude') && lock.options.ides.includes('cursor')) {
     ok('Cursor may also import the Claude Code hooks from .claude/settings.json; PAACM handles the duplicate calls, or you can turn the import off in Cursor settings')
   }
-  return finish(io, results)
 }
 
 function finish(io, results) {
