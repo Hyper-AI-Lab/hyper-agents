@@ -32,7 +32,7 @@ The migration compares every PAACM 2 file with its exact 2.0.0 content.
 | `.agent/policies/security.md`, `verification.md` | `references/security.md`, `references/07-verify.md` and the `paacm-verify` skill |
 | `.agent/templates/task-contract.md` | `references/templates/SPEC.md` and `PLAN.md` |
 | `.agent/integrations/mcp-inventory.md` | `references/mcp.md` |
-| `.agent/evals/task-schema.md` | Removed |
+| `.agent/evals/task-schema.md` | `paacm eval` and its task-set format in `.agent/evals/tasks.json` ([evaluation](evaluation.md)) |
 | `.agent/state/` | `.agent/tasks/`, one folder per task, ignored by git through `.agent/.gitignore` |
 | `.agent/checks.conf` | The same file and format, with the same tiers |
 | `.claude/skills/paacm/SKILL.md`, `.cursor/commands/paacm.md` | The `paacm`, `paacm-verify` and `paacm-review` skills in `.claude/skills/`, which both IDEs read; start a request with `/paacm` |
