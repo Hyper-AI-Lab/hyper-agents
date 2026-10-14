@@ -1,0 +1,21 @@
+{
+  "name": "paacm",
+  "version": "3.0.0",
+  "description": "PAACM: the Verified Single-Writer Loop for agentic coding. One writer agent, read-only explorer and reviewer subagents, tests protected after approval, and completion gated on executed checks.",
+  "author": {
+    "name": "Hyper AI Lab",
+    "url": "https://github.com/Hyper-AI-Lab"
+  },
+  "homepage": "https://github.com/Hyper-AI-Lab/hyper-agents",
+  "repository": "https://github.com/Hyper-AI-Lab/hyper-agents",
+  "license": "Apache-2.0",
+  "keywords": ["agentic-coding", "verification", "subagents", "hooks", "tdd", "code-review"],
+  "marketplace": {
+    "name": "hyper-agents",
+    "owner": {
+      "name": "Hyper AI Lab",
+      "url": "https://github.com/Hyper-AI-Lab"
+    },
+    "description": "PAACM agentic-coding kit for Claude Code and Cursor."
+  }
+}
