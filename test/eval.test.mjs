@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { test } from 'node:test'
+import { pathToFileURL } from 'node:url'
 import { buildReport, RUNS_PATH, validateTaskSet } from '../src/cli/eval.mjs'
 import { correlation, pairedDifference, passHatK, tCritical } from '../src/lib/stats.mjs'
 import { cli, commitAll, git, repo, tempDir, writeFiles } from './helpers.mjs'
@@ -74,7 +75,7 @@ async function evalProject(t) {
   const reference = commitAll(proj, 'fix')
   const hidden = tempDir(t)
   await writeFiles(hidden, {
-    'add.mjs': "const { add } = await import(new URL('src/math.mjs', 'file://' + process.cwd().replace(/\\\\/g, '/') + '/').href)\nprocess.exit(add(2, 3) === 5 ? 0 : 1)\n",
+    'add.mjs': "import path from 'node:path'\nimport { pathToFileURL } from 'node:url'\nconst { add } = await import(pathToFileURL(path.join(process.cwd(), 'src', 'math.mjs')).href)\nprocess.exit(add(2, 3) === 5 ? 0 : 1)\n",
     'flaky.mjs': "import { existsSync, writeFileSync } from 'node:fs'\nconst f = process.argv[2]\nif (existsSync(f)) process.exit(1)\nwriteFileSync(f, 'x')\n",
   })
   const accept = 'node "{{HIDDEN}}/add.mjs"'
@@ -97,7 +98,7 @@ async function evalProject(t) {
   const trial = async (name, files = {}) => {
     const dir = tempDir(t, `paacm-trial-${name}-`)
     git(dir, 'init', '-q')
-    git(dir, 'fetch', '-q', '--depth', '1', `file://${proj.replace(/\\/g, '/')}`, base)
+    git(dir, 'fetch', '-q', '--depth', '1', pathToFileURL(proj).href, base)
     git(dir, 'checkout', '-q', 'FETCH_HEAD')
     await writeFiles(dir, files)
     return dir
