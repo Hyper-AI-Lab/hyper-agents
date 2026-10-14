@@ -63,17 +63,22 @@ All method state lives under `.agent/` in the target repository. Tool configurat
 ```json
 {
   "id": "2026-10-14-session-expiry",
+  "summary": "Expire idle sessions after 30 minutes and cover it with a regression test",
   "route": "STANDARD",
   "highStakes": false,
   "autonomy": "L1",
   "status": "implementing",
+  "baseCommit": "9e41d07",
   "testsApprovedAt": "3f2c1ab",
   "gateFailures": 0,
+  "lastGate": { "at": "2026-10-14T09:28:11Z", "head": "3f2c1ab", "tier": "quick", "passed": false, "failed": "unit-tests" },
+  "blocked": null,
+  "createdAt": "2026-10-14T09:02:40Z",
   "updatedAt": "2026-10-14T09:30:00Z"
 }
 ```
 
-`status` is one of `triaged`, `specifying`, `exploring`, `planning`, `testing`, `implementing`, `verifying`, `reviewing`, `done`, `blocked`. `testsApprovedAt` is the commit at which the acceptance tests were approved, or `null` before phase 5.
+`status` is one of `triaged`, `specifying`, `exploring`, `planning`, `testing`, `implementing`, `verifying`, `reviewing`, `done`, `blocked`. `baseCommit` is the commit the task started from; the review diff and the configuration audit are computed against it. `testsApprovedAt` is the commit at which the acceptance tests were approved, or `null` before phase 5. `lastGate` records the most recent gate run, and `gateFailures` counts consecutive failing runs. `blocked` holds the escalation trigger and reason once the task is blocked.
 
 ## 5. Routes
 

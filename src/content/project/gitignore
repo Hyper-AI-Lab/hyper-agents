@@ -1,0 +1,3 @@
+# PAACM task state and evaluation runs are local working files.
+tasks/
+evals/runs/

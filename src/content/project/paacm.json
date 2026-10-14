@@ -1,0 +1,40 @@
+{
+  "autonomy": "L1",
+  "gate": {
+    "tier": "quick",
+    "deepTier": "full",
+    "retryCap": 3
+  },
+  "checks": {
+    "timeoutSec": 900
+  },
+  "protect": {
+    "tests": [
+      "**/*.test.*",
+      "**/*.spec.*",
+      "**/*_test.*",
+      "**/test_*.py",
+      "**/tests/**",
+      "**/test/**",
+      "**/__tests__/**",
+      "**/spec/**",
+      "**/testdata/**",
+      "**/fixtures/**",
+      "**/__snapshots__/**"
+    ],
+    "config": [
+      ".git/hooks/**",
+      ".claude/**",
+      ".cursor/**",
+      ".mcp.json",
+      ".vscode/**",
+      ".github/workflows/**",
+      ".gitlab-ci.yml",
+      ".circleci/**",
+      ".agent/paacm.json",
+      ".agent/checks.conf",
+      ".agent/paacm.lock.json"
+    ]
+  },
+  "postEdit": []
+}
