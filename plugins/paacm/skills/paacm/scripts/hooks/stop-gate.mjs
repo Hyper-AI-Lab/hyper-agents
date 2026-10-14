@@ -4,6 +4,7 @@
 import { GATE, recentGate, runGate } from '../lib/gate.mjs'
 import { changedSince, head, uncommittedPaths } from '../lib/git.mjs'
 import { detectTool, emit, projectDirFrom, readHookInput, runHook } from '../lib/hookio.mjs'
+import { changedThisSession, sessionIdFrom } from '../lib/session.mjs'
 import { currentTask } from '../lib/task.mjs'
 
 const GATED = new Set(['implementing', 'verifying', 'reviewing'])
@@ -25,10 +26,14 @@ runHook(async () => {
 
   const task = await currentTask(projectDir)
   if (!task) {
-    const changed = uncommittedPaths(projectDir).filter((p) => !isTaskFile(p))
+    // Without a session baseline, every uncommitted file is reported, worded so
+    // that it does not claim the agent made the change.
+    const sinceStart = await changedThisSession(projectDir, sessionIdFrom(input))
+    const changed = (sinceStart ?? uncommittedPaths(projectDir)).filter((p) => !isTaskFile(p))
     if (changed.length && !continuation) {
+      const list = `${changed.slice(0, 5).join(', ')}${changed.length > 5 ? ', …' : ''}`
       return block(
-        `PAACM: you changed ${changed.length} file(s) without a PAACM task (${changed.slice(0, 5).join(', ')}${changed.length > 5 ? ', …' : ''}). If this was a coding request, start a task with \`paacm task start\` and verify with \`paacm gate\` before finishing. If the user asked for these edits outside PAACM, say so in your answer.`,
+        `PAACM: ${sinceStart ? `${changed.length} file(s) changed in this session` : `${changed.length} file(s) have uncommitted changes`} and no PAACM task is active (${list}). If this was a coding request, start a task with \`paacm task start\` and verify with \`paacm gate\` before finishing. If the user asked for these edits outside PAACM, or they are not yours, say so in your answer.`,
       )
     }
     return allow()

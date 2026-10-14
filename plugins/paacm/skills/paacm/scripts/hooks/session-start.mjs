@@ -8,6 +8,7 @@ import { hasBlock } from '../lib/blocks.mjs'
 import { readTextOrNull } from '../lib/fs.mjs'
 import { branch, isRepo, recentCommits, shortSha, statusShort } from '../lib/git.mjs'
 import { contextResponse, detectTool, projectDirFrom, readHookInput, runHook, toProjectPath } from '../lib/hookio.mjs'
+import { recordBaseline, sessionIdFrom } from '../lib/session.mjs'
 import { currentTask, readPlanHead, readProgressTail } from '../lib/task.mjs'
 
 const scriptsDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
@@ -31,6 +32,7 @@ runHook(async () => {
   }
 
   if (isRepo(projectDir)) {
+    await recordBaseline(projectDir, sessionIdFrom(input))
     out.push('', '## Repository', '', `Branch: ${branch(projectDir) ?? '(detached)'}`)
     const status = statusShort(projectDir)
     out.push('', 'Uncommitted changes:', status ? `\n\`\`\`\n${status}\n\`\`\`` : '(none)')
