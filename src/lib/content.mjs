@@ -109,29 +109,45 @@ export function withScripts(value, scripts) {
 
 // Files of one skill as they are installed: the authored files plus, for the
 // runtime skill, the runtime under scripts/ and the core rules the session-start
-// hook injects when the project has no AGENTS.md block (plugin installs).
-function skillFiles(content, name) {
+// hook injects when the project has no AGENTS.md block (plugin installs, or a
+// project whose block was removed).
+function skillFiles(content, name, { plugin = false } = {}) {
   const out = new Map(content.skills.get(name))
   if (name === RUNTIME_SKILL) {
     for (const [rel, text] of content.runtime) out.set(`scripts/${rel}`, text)
-    out.set('scripts/core-rules.md', content.agentsBlock)
+    out.set('scripts/core-rules.md', plugin ? pluginCoreRules(content) : content.agentsBlock)
   }
   return out
 }
 
+// The core rules as a plugin delivers them. The AGENTS.md block names the
+// project-install locations of the skill and the runtime, which a plugin does
+// not have, and ends with advice about editing AGENTS.md.
+const PLUGIN_REWRITES = [
+  [
+    'invoke `/paacm <request>`, or open `.claude/skills/paacm/SKILL.md` and follow it.',
+    'invoke it with the request (in Claude Code it is listed as `/paacm:paacm`), or open its `SKILL.md` and follow it.',
+  ],
+  [
+    "`node .claude/skills/paacm/scripts/paacm.mjs <command>`, run from the repository root. When PAACM is installed as a plugin, the session-start message gives the runtime's exact path.",
+    "the `paacm.mjs` script in the `paacm` skill's `scripts/` folder, run with `node` from the repository root; the session-start message gives its exact path.",
+  ],
+]
+
+export function pluginCoreRules(content) {
+  let body = content.agentsBlock
+  for (const [project, plugin] of PLUGIN_REWRITES) {
+    if (!body.includes(project)) throw new Error(`instructions/AGENTS.md no longer contains a sentence the plugin rules rewrite; update PLUGIN_REWRITES in src/lib/content.mjs:\n${project}`)
+    body = body.replace(project, plugin)
+  }
+  return body.replace(/\n+Project-specific facts[\s\S]*$/, '\n')
+}
+
 // The plugin's always-applied Cursor rule. A plugin cannot ship AGENTS.md, and
 // Cursor cloud agents do not run session-start hooks, so the core rules reach
-// Cursor through this rule. Generated from the same AGENTS.md block.
-const PROJECT_RUNTIME_SENTENCE =
-  "`node .claude/skills/paacm/scripts/paacm.mjs <command>`, run from the repository root. When PAACM is installed as a plugin, the session-start message gives the runtime's exact path."
-const PLUGIN_RUNTIME_SENTENCE = "the `paacm.mjs` script in the `paacm` skill's `scripts/` folder, run with `node` from the repository root; the session-start message gives its exact path."
-
+// Cursor through this rule.
 export function pluginCoreRule(content) {
-  if (!content.agentsBlock.includes(PROJECT_RUNTIME_SENTENCE)) {
-    throw new Error('instructions/AGENTS.md no longer contains the runtime sentence the plugin rule rewrites; update PROJECT_RUNTIME_SENTENCE in src/lib/content.mjs')
-  }
-  const body = content.agentsBlock.replace(PROJECT_RUNTIME_SENTENCE, PLUGIN_RUNTIME_SENTENCE).replace(/\n+Project-specific facts[\s\S]*$/, '\n')
-  return `---\ndescription: PAACM core rules for agentic coding in this workspace\nalwaysApply: true\n---\n\n${body}`
+  return `---\ndescription: PAACM core rules for agentic coding in this workspace\nalwaysApply: true\n---\n\n${pluginCoreRules(content)}`
 }
 
 // Claude Code model aliases. Cursor accepts only `inherit` or a full model ID, so
@@ -175,7 +191,7 @@ export function renderPlugin(content) {
   put('.claude-plugin/plugin.json', stableJson(base))
   put('.cursor-plugin/plugin.json', stableJson({ ...base, hooks: './hooks/cursor-hooks.json' }))
   for (const name of [...content.skills.keys()].sort()) {
-    for (const [rel, text] of [...skillFiles(content, name)].sort(([a], [b]) => (a < b ? -1 : 1))) {
+    for (const [rel, text] of [...skillFiles(content, name, { plugin: true })].sort(([a], [b]) => (a < b ? -1 : 1))) {
       put(`skills/${name}/${rel}`, text)
     }
   }
