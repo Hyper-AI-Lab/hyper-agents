@@ -80,6 +80,10 @@ export async function startTask(projectDir, { slug, route, summary, highStakes =
   const dir = taskDir(projectDir, id)
   if (await readTextOrNull(path.join(dir, 'state.json'))) throw new TaskError(`task ${id} already exists; choose another --slug or run paacm task resume ${id}`)
   await mkdir(dir, { recursive: true })
+  // Task state is local working data. A project install ignores it through
+  // .agent/.gitignore; a plugin install has no such file.
+  const ignore = path.join(tasksDir(projectDir), '.gitignore')
+  if ((await readTextOrNull(ignore)) === null) await writeFileAtomic(ignore, '*\n')
   const base = head(projectDir)
   const state = {
     id,
