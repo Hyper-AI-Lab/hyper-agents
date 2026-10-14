@@ -70,6 +70,7 @@ At every level, consequential actions need explicit approval in the conversation
 
 - **A defect investigation** (something is broken, the cause is unknown): follow `references/debugging.md` within phases 3–6.
 - **A review-only request** (the user asks you to review a change, not to make one): use the `paacm-review` skill instead.
+- **An MCP server** is requested or needed: follow `references/mcp.md`.
 - **A request that needs no change** (a question, an explanation): answer directly without creating a task.
 
 ## Finishing
