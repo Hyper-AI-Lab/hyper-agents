@@ -6,7 +6,7 @@ Everything PAACM installs into a project or ships as a plugin is authored here o
 
 | Path | Content | Rendered to (project install) | Rendered to (plugin) |
 |---|---|---|---|
-| `kit.json` | Name, version, description, author, licence, keywords and marketplace owner | `.agent/paacm.json` version | Both `plugin.json` manifests and both marketplace manifests |
+| `kit.json` | Name, version, description, author, licence, keywords and marketplace owner | `.agent/paacm.lock.json` version | Both `plugin.json` manifests and both marketplace manifests |
 | `instructions/AGENTS.md` | The always-on core instructions | A marked block in `AGENTS.md`, which both IDEs read | `rules/paacm-core.mdc`, an always-applied Cursor rule generated from it (Cursor cloud agents do not run session-start hooks), and `skills/paacm/scripts/core-rules.md`, which the session-start hook injects for Claude Code because a plugin cannot ship `AGENTS.md` or `CLAUDE.md` |
 | `instructions/CLAUDE.md` | The Claude Code adapter (imports `AGENTS.md`) | A marked block in `CLAUDE.md` (Claude Code only) | Not used |
 | `skills/<name>/` | Agent Skills: `SKILL.md` plus `references/` | `.claude/skills/<name>/` (read by both IDEs) | `skills/<name>/` |
@@ -15,9 +15,10 @@ Everything PAACM installs into a project or ships as a plugin is authored here o
 | `hooks/cursor.json` | Cursor hooks, with `{{SCRIPTS}}` for the runtime location | Merged into `.cursor/hooks.json` (power layer) | `hooks/cursor-hooks.json` |
 | `profiles/claude/L0.json` … `L3.json` | Permission and sandbox settings per autonomy level | Merged into `.claude/settings.json` (power layer) | Not used |
 | `profiles/cursor/L0.json` … `L3.json` | Terminal and MCP allowlists per autonomy level | Merged into `.cursor/permissions.json` (power layer) | Not used |
-| `project/paacm.json` | Default project configuration | `.agent/paacm.json` | Not used |
 | `project/checks.conf` | Default check manifest | `.agent/checks.conf` | Not used |
 | `project/gitignore` | Ignore rules for task state and evaluation runs | `.agent/.gitignore` | Not used |
+
+The project configuration's defaults (autonomy, gate tiers, retry cap, check timeout, protected paths) are defined once in `src/runtime/lib/config.mjs`: a project install writes them to `.agent/paacm.json`, and the runtime applies them wherever that file is missing or leaves a key out, as in a plugin install.
 
 The runtime in `src/runtime/` (the check runner, the protected-path audit, task state and the hook scripts) is copied into `skills/paacm/scripts/` for both targets, so hooks, the agent and the CLI run the same code. The generator also places a copy of `instructions/AGENTS.md` there as `core-rules.md`; the session-start hook injects it when the project's `AGENTS.md` has no PAACM block, which is the case for plugin installs.
 

@@ -36,7 +36,7 @@ export async function validateContent(content) {
   }
   problems.push(...validateClaudeHooks(content.claudeHooks, 'hooks/claude.json'))
   problems.push(...validateCursorHooks(content.cursorHooks, 'hooks/cursor.json'))
-  problems.push(...validateConfig(content.project.config).map((p) => `project/paacm.json: ${p}`))
+  problems.push(...validateConfig(content.project.config).map((p) => `default configuration (src/runtime/lib/config.mjs): ${p}`))
   try {
     parseManifest(content.project.checks)
   } catch (error) {

@@ -6,13 +6,42 @@ export const CONFIG_PATH = '.agent/paacm.json'
 export const TIERS = ['quick', 'full', 'security']
 const LEVELS = ['L0', 'L1', 'L2', 'L3']
 
+// The defaults apply wherever .agent/paacm.json is missing or leaves a key out,
+// as in a plugin install. A project install writes them into .agent/paacm.json.
 export const DEFAULT_CONFIG = Object.freeze({
   autonomy: 'L1',
   layer: 'core',
   ides: ['claude', 'cursor'],
   gate: { tier: 'quick', deepTier: 'full', retryCap: 3 },
   checks: { timeoutSec: 900 },
-  protect: { tests: [], config: [] },
+  protect: {
+    tests: [
+      '**/*.test.*',
+      '**/*.spec.*',
+      '**/*_test.*',
+      '**/test_*.py',
+      '**/tests/**',
+      '**/test/**',
+      '**/__tests__/**',
+      '**/spec/**',
+      '**/testdata/**',
+      '**/fixtures/**',
+      '**/__snapshots__/**',
+    ],
+    config: [
+      '.git/hooks/**',
+      '.claude/**',
+      '.cursor/**',
+      '.mcp.json',
+      '.vscode/**',
+      '.github/workflows/**',
+      '.gitlab-ci.yml',
+      '.circleci/**',
+      '.agent/paacm.json',
+      '.agent/checks.conf',
+      '.agent/paacm.lock.json',
+    ],
+  },
   postEdit: [],
 })
 
@@ -79,7 +108,7 @@ export async function loadConfig(projectDir) {
     ides: raw.ides ?? [...d.ides],
     gate: { ...d.gate, ...(raw.gate ?? {}) },
     checks: { ...d.checks, ...(raw.checks ?? {}) },
-    protect: { tests: raw.protect?.tests ?? [], config: raw.protect?.config ?? [] },
+    protect: { tests: raw.protect?.tests ?? [...d.protect.tests], config: raw.protect?.config ?? [...d.protect.config] },
     postEdit: raw.postEdit ?? [],
   }
 }

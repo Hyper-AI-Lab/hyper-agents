@@ -7,6 +7,7 @@
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { DEFAULT_CONFIG } from '../runtime/lib/config.mjs'
 import { listFiles, normalizeText, stableJson } from '../runtime/lib/fs.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -40,6 +41,14 @@ async function readJson(dir, rel) {
   } catch (error) {
     throw new Error(`src/content/${rel}: invalid JSON (${error.message})`)
   }
+}
+
+// The configuration a project install writes to .agent/paacm.json: the
+// runtime's defaults, so that a project without the file behaves the same.
+// renderProject adds layer and ides.
+function projectConfig() {
+  const d = structuredClone(DEFAULT_CONFIG)
+  return { autonomy: d.autonomy, gate: d.gate, checks: d.checks, protect: d.protect, postEdit: d.postEdit }
 }
 
 export async function loadContent(contentDir = CONTENT_DIR, runtimeDir = RUNTIME_DIR) {
@@ -89,7 +98,7 @@ export async function loadContent(contentDir = CONTENT_DIR, runtimeDir = RUNTIME
     cursorHooks: await readJson(contentDir, 'hooks/cursor.json'),
     profiles,
     project: {
-      config: await readJson(contentDir, 'project/paacm.json'),
+      config: projectConfig(),
       checks: await readText(contentDir, 'project/checks.conf'),
       gitignore: await readText(contentDir, 'project/gitignore'),
     },
