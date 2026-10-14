@@ -2,7 +2,7 @@
 // IDEs document, and checks that the rendered outputs are well formed.
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
-import { AUTONOMY_LEVELS, IDES, loadContent, PACKAGE_ROOT, renderMarketplaces, renderPlugin, renderProject } from '../lib/content.mjs'
+import { AUTONOMY_LEVELS, cursorSafeAgent, IDES, loadContent, PACKAGE_ROOT, renderMarketplaces, renderPlugin, renderProject } from '../lib/content.mjs'
 import {
   validateAgent,
   validateClaudeHooks,
@@ -25,10 +25,9 @@ export async function validateContent(content) {
     }
     problems.push(...validateSkill(skill, name, `skills/${name}/SKILL.md`))
   }
-  for (const [file, text] of content.agents) problems.push(...validateAgent(text, file.replace(/\.md$/, ''), `agents/${file}`))
-  for (const [file, text] of content.cursorAgents) {
-    problems.push(...validateAgent(text, file.replace(/\.md$/, ''), `cursor/agents/${file}`))
-    if (!content.agents.has(file)) problems.push(`cursor/agents/${file}: overrides an agent that does not exist in agents/`)
+  for (const [file, text] of content.agents) {
+    problems.push(...validateAgent(text, file.replace(/\.md$/, ''), `agents/${file}`))
+    problems.push(...validateAgent(cursorSafeAgent(text), file.replace(/\.md$/, ''), `agents/${file} (Cursor form)`))
   }
   for (const [file, text] of content.pluginRules) problems.push(...validateRule(text, `cursor/rules/plugin/${file}`))
   for (const [file, text] of content.projectRules) problems.push(...validateRule(text, `cursor/rules/project/${file}`))

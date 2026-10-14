@@ -10,8 +10,7 @@ Everything PAACM installs into a project or ships as a plugin is authored here o
 | `instructions/AGENTS.md` | The always-on core instructions | A marked block in `AGENTS.md` | Delivered by the session-start hook, because plugins cannot ship `AGENTS.md` |
 | `instructions/CLAUDE.md` | The Claude Code adapter (imports `AGENTS.md`) | A marked block in `CLAUDE.md` (Claude Code only) | Not used |
 | `skills/<name>/` | Agent Skills: `SKILL.md` plus `references/` | `.claude/skills/<name>/` (read by both IDEs) | `skills/<name>/` |
-| `agents/<name>.md` | Subagents with both IDEs' fields | `.claude/agents/<name>.md` (power layer; read by both IDEs) | `agents/<name>.md` |
-| `cursor/agents/<name>.md` | Cursor-only overrides of a subagent of the same name | `.cursor/agents/<name>.md` (power layer, Cursor) | Not used |
+| `agents/<name>.md` | Subagents with both IDEs' fields (Claude Code's `tools` and model alias, Cursor's `readonly`) | `.claude/agents/<name>.md` (power layer; read by both IDEs). For agents whose `model` is a Claude Code alias (`haiku`, `sonnet`, `opus`, `fable`), the generator also writes `.cursor/agents/<name>.md` with `model: inherit`, which Cursor prefers over `.claude/agents/` | `agents/<name>.md` with `model: inherit` when the model is a Claude Code alias, because both IDEs read the plugin's agents and Cursor accepts only `inherit` or a full model ID |
 | `cursor/rules/plugin/<name>.mdc` | Cursor rules for the plugin | Not used | `rules/<name>.mdc` |
 | `cursor/rules/project/<name>.mdc` | Cursor rules for project installs | `.cursor/rules/<name>.mdc` (power layer, Cursor) | Not used |
 | `hooks/claude.json` | Claude Code hooks, with `{{SCRIPTS}}` for the runtime location | Merged into `.claude/settings.json` (power layer) | `hooks/hooks.json` |
@@ -22,7 +21,7 @@ Everything PAACM installs into a project or ships as a plugin is authored here o
 | `project/checks.conf` | Default check manifest | `.agent/checks.conf` | Not used |
 | `project/gitignore` | Ignore rules for task state and evaluation runs | `.agent/.gitignore` | Not used |
 
-The runtime in `src/runtime/` (the check runner, the protected-path audit, task state and the hook scripts) is copied into `skills/paacm/scripts/` for both targets, so hooks, the agent and the CLI run the same code.
+The runtime in `src/runtime/` (the check runner, the protected-path audit, task state and the hook scripts) is copied into `skills/paacm/scripts/` for both targets, so hooks, the agent and the CLI run the same code. The generator also places a copy of `instructions/AGENTS.md` there as `core-rules.md`; the session-start hook injects it when the project's `AGENTS.md` has no PAACM block, which is the case for plugin installs.
 
 ## Rules for authors
 

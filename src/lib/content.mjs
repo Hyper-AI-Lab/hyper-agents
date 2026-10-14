@@ -85,7 +85,6 @@ export async function loadContent(contentDir = CONTENT_DIR, runtimeDir = RUNTIME
     claudeBlock: await readText(contentDir, 'instructions/CLAUDE.md'),
     skills,
     agents: await pick('agents/', '.md'),
-    cursorAgents: await pick('cursor/agents/', '.md'),
     pluginRules: await pick('cursor/rules/plugin/', '.mdc'),
     projectRules: await pick('cursor/rules/project/', '.mdc'),
     claudeHooks: await readJson(contentDir, 'hooks/claude.json'),
@@ -111,11 +110,33 @@ export function withScripts(value, scripts) {
 }
 
 // Files of one skill as they are installed: the authored files plus, for the
-// runtime skill, the runtime under scripts/.
+// runtime skill, the runtime under scripts/ and the core rules the session-start
+// hook injects when the project has no AGENTS.md block (plugin installs).
 function skillFiles(content, name) {
   const out = new Map(content.skills.get(name))
   if (name === RUNTIME_SKILL) {
     for (const [rel, text] of content.runtime) out.set(`scripts/${rel}`, text)
+    out.set('scripts/core-rules.md', content.agentsBlock)
+  }
+  return out
+}
+
+// Claude Code model aliases. Cursor accepts only `inherit` or a full model ID, so
+// subagents that Cursor reads (project .cursor/agents overrides and the plugin,
+// whose agents both IDEs read) use `inherit` instead of an alias.
+const CLAUDE_MODEL_ALIASES = new Set(['haiku', 'sonnet', 'opus', 'fable'])
+
+export function cursorSafeAgent(text) {
+  return text.replace(/^(model:\s*)([A-Za-z0-9._-]+)\s*$/m, (line, prefix, value) => (CLAUDE_MODEL_ALIASES.has(value) ? `${prefix}inherit` : line))
+}
+
+// The agents that need a Cursor override in a project install: those whose model
+// is a Claude Code alias.
+export function cursorAgentOverrides(content) {
+  const out = new Map()
+  for (const [file, text] of content.agents) {
+    const safe = cursorSafeAgent(text)
+    if (safe !== text) out.set(file, safe)
   }
   return out
 }
@@ -145,7 +166,7 @@ export function renderPlugin(content) {
       put(`skills/${name}/${rel}`, text)
     }
   }
-  for (const [file, text] of content.agents) put(`agents/${file}`, text)
+  for (const [file, text] of content.agents) put(`agents/${file}`, cursorSafeAgent(text))
   for (const [file, text] of content.pluginRules) put(`rules/${file}`, text)
   put('hooks/hooks.json', stableJson(withScripts(content.claudeHooks, SCRIPT_ROOTS.pluginClaude)))
   put('hooks/cursor-hooks.json', stableJson(withScripts(content.cursorHooks, SCRIPT_ROOTS.pluginCursor)))
@@ -224,7 +245,7 @@ export function renderProject(content, options) {
       })
     }
     if (ides.has('cursor')) {
-      for (const [name, text] of content.cursorAgents) file(`.cursor/agents/${name}`, text)
+      for (const [name, text] of cursorAgentOverrides(content)) file(`.cursor/agents/${name}`, text)
       for (const [name, text] of content.projectRules) file(`.cursor/rules/${name}`, text)
       entries.push({
         path: '.cursor/hooks.json',
