@@ -6,6 +6,7 @@ import { run as runtime } from '../runtime/paacm.mjs'
 import { build } from './build.mjs'
 import { detect } from './detect.mjs'
 import { doctor } from './doctor.mjs'
+import { EVAL_HELP, evaluate } from './eval.mjs'
 import { init, uninstall, upgrade } from './install.mjs'
 import { validate } from './validate.mjs'
 
@@ -47,6 +48,11 @@ export const COMMANDS = {
     run: (args, io) => runtime(['check', ...args], { out: io.out, err: io.err }),
     summary: 'Run the project checks in .agent/checks.conf',
     help: 'Usage: paacm check --list | --tier <quick|full|security> [--json]\n\nExit codes: 0 passed, 1 failed, 2 configuration error, 3 a required tier has no checks.',
+  },
+  eval: {
+    run: evaluate,
+    summary: 'Grade evaluation runs and compare arms on a private task set',
+    help: EVAL_HELP,
   },
   build: { run: build, summary: 'Regenerate the plugin and marketplace manifests from src/content (kit development)' },
   validate: { run: validate, summary: 'Validate kit content against the Claude Code and Cursor formats (kit development)' },
