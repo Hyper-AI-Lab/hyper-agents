@@ -1,7 +1,7 @@
 // Stop gate (Claude Code Stop, Cursor stop). The agent may not finish an
 // implementation while the gate fails. It may always stop to ask for approval
 // (before implementation), after `paacm task block`, or with a BLOCKED: report.
-import { GATE, runGate } from '../lib/gate.mjs'
+import { GATE, recentGate, runGate } from '../lib/gate.mjs'
 import { changedSince, head, uncommittedPaths } from '../lib/git.mjs'
 import { detectTool, emit, projectDirFrom, readHookInput, runHook } from '../lib/hookio.mjs'
 import { currentTask } from '../lib/task.mjs'
@@ -41,6 +41,12 @@ runHook(async () => {
   const g = task.lastGate
   const dirty = uncommittedPaths(projectDir).some((p) => !isTaskFile(p))
   if (g && g.passed && g.head === head(projectDir) && !dirty && !g.dirty) return allow()
+
+  const duplicate = recentGate(projectDir, task)
+  if (duplicate) {
+    if (duplicate.passed) return allow()
+    return block(`PAACM gate failed on this exact working tree a moment ago (check ${duplicate.failed}); see the previous gate message, fix the cause, then finish again.`)
+  }
 
   const lines = []
   const result = await runGate(projectDir, { log: (l) => lines.push(l) })

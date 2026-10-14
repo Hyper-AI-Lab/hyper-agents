@@ -9,7 +9,16 @@ Claude Code and Cursor share most extension mechanisms but differ in hook contra
 
 ## Decision
 
-All kit content lives once in `src/content/`. A generator emits the project-install payload and a plugin for both IDEs. Shared assets go where both tools read them (`CLAUDE.md`, `.claude/skills/`, `.claude/agents/`); Cursor-only files cover the divergent contracts (`.cursor/hooks.json`, `.cursor/rules/*.mdc`, `.cursor/agents/` overrides, permissions and sandbox). CI fails when committed output differs from the generator's.
+All kit content lives once in `src/content/`. A generator emits the project-install payload and a plugin for both IDEs. CI fails when the committed output differs from the generator's.
+
+- **Shared assets** go where both tools read them: `AGENTS.md`, `CLAUDE.md`, `.claude/skills/` and `.claude/agents/`.
+- **Cursor-only files** cover only the contracts that differ:
+  - `.cursor/hooks.json`, because Cursor's hook schema differs;
+  - `.cursor/agents/` overrides, generated with `model: inherit` because Cursor accepts no Claude Code model alias;
+  - `.cursor/permissions.json` allowlists.
+- **No extra `.mdc` rules in project installs.** Cursor already reads `AGENTS.md` natively, and a second always-on rule would only add cost on every request (ADR 0004).
+- **Plugin always-on rules:** the plugin, which can ship neither `AGENTS.md` nor `CLAUDE.md`, carries the core rules as an always-applied Cursor rule generated from `AGENTS.md`, because Cursor cloud agents do not run session-start hooks. Claude Code receives the same rules from the session-start hook.
+- **Duplicate hook runs:** Cursor imports Claude Code hooks by default, so in a project installed for both IDEs a hook can run twice for one event. The protect hook and the shell guard keep no state. The stop gate recognises a result recorded moments earlier for the same working tree and reuses it, so one failure is never counted twice.
 
 ## Evidence
 

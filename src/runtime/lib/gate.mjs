@@ -6,8 +6,8 @@ import path from 'node:path'
 import { auditTask } from './audit.mjs'
 import { MANIFEST_PATH, missingTiers, parseManifest } from './checks.mjs'
 import { loadConfig, TIERS } from './config.mjs'
-import { readTextOrNull } from './fs.mjs'
-import { head, uncommittedPaths } from './git.mjs'
+import { readTextOrNull, sha256 } from './fs.mjs'
+import { git, head, uncommittedPaths } from './git.mjs'
 import { runChecks } from './runner.mjs'
 import { currentTask, writeState } from './task.mjs'
 
@@ -17,6 +17,26 @@ export async function loadChecks(projectDir) {
   const text = await readTextOrNull(path.join(projectDir, ...MANIFEST_PATH.split('/')))
   if (text === null) return []
   return parseManifest(text)
+}
+
+// Identifies the exact state of the working tree: HEAD plus every uncommitted
+// change (tracked diffs and untracked files). Task files are excluded.
+export function worktreeFingerprint(projectDir) {
+  const tracked = git(projectDir, ['diff', '--no-color', 'HEAD', '--', '.', ':(exclude).agent/tasks'], { allowFail: true }).stdout
+  const untracked = git(projectDir, ['ls-files', '--others', '--exclude-standard', '-z'], { allowFail: true }).stdout
+  return sha256(`${head(projectDir) ?? ''}\0${tracked}\0${untracked}`)
+}
+
+// A gate result for this exact working tree recorded within `withinMs`, or null.
+// The stop hook uses it so that the same stop event delivered twice (Cursor also
+// runs Claude Code's hooks through its third-party import) neither runs the
+// checks twice nor counts one failure twice.
+export function recentGate(projectDir, state, withinMs = 15_000) {
+  const g = state && state.lastGate
+  if (!g || !g.fingerprint || !g.at) return null
+  const age = Date.now() - Date.parse(g.at)
+  if (!(age >= 0 && age < withinMs)) return null
+  return g.fingerprint === worktreeFingerprint(projectDir) ? g : null
 }
 
 export function tierForRoute(config, state) {
@@ -45,12 +65,13 @@ export async function runGate(projectDir, { tier, log = () => {}, sink } = {}) {
     if (!state) return null
     state.gateFailures = passed ? 0 : (state.gateFailures ?? 0) + 1
     state.lastGate = {
-      at: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
+      at: new Date().toISOString(),
       head: head(projectDir),
       tier: effectiveTier,
       passed,
       failed,
       dirty: uncommittedPaths(projectDir).some((p) => !p.startsWith('.agent/tasks/')),
+      fingerprint: worktreeFingerprint(projectDir),
     }
     await writeState(projectDir, state)
     return state.gateFailures

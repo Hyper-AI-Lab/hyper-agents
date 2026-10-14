@@ -7,12 +7,10 @@ Everything PAACM installs into a project or ships as a plugin is authored here o
 | Path | Content | Rendered to (project install) | Rendered to (plugin) |
 |---|---|---|---|
 | `kit.json` | Name, version, description, author, licence, keywords and marketplace owner | `.agent/paacm.json` version | Both `plugin.json` manifests and both marketplace manifests |
-| `instructions/AGENTS.md` | The always-on core instructions | A marked block in `AGENTS.md` | Delivered by the session-start hook, because plugins cannot ship `AGENTS.md` |
+| `instructions/AGENTS.md` | The always-on core instructions | A marked block in `AGENTS.md`, which both IDEs read | `rules/paacm-core.mdc`, an always-applied Cursor rule generated from it (Cursor cloud agents do not run session-start hooks), and `skills/paacm/scripts/core-rules.md`, which the session-start hook injects for Claude Code because a plugin cannot ship `AGENTS.md` or `CLAUDE.md` |
 | `instructions/CLAUDE.md` | The Claude Code adapter (imports `AGENTS.md`) | A marked block in `CLAUDE.md` (Claude Code only) | Not used |
 | `skills/<name>/` | Agent Skills: `SKILL.md` plus `references/` | `.claude/skills/<name>/` (read by both IDEs) | `skills/<name>/` |
 | `agents/<name>.md` | Subagents with both IDEs' fields (Claude Code's `tools` and model alias, Cursor's `readonly`) | `.claude/agents/<name>.md` (power layer; read by both IDEs). For agents whose `model` is a Claude Code alias (`haiku`, `sonnet`, `opus`, `fable`), the generator also writes `.cursor/agents/<name>.md` with `model: inherit`, which Cursor prefers over `.claude/agents/` | `agents/<name>.md` with `model: inherit` when the model is a Claude Code alias, because both IDEs read the plugin's agents and Cursor accepts only `inherit` or a full model ID |
-| `cursor/rules/plugin/<name>.mdc` | Cursor rules for the plugin | Not used | `rules/<name>.mdc` |
-| `cursor/rules/project/<name>.mdc` | Cursor rules for project installs | `.cursor/rules/<name>.mdc` (power layer, Cursor) | Not used |
 | `hooks/claude.json` | Claude Code hooks, with `{{SCRIPTS}}` for the runtime location | Merged into `.claude/settings.json` (power layer) | `hooks/hooks.json` |
 | `hooks/cursor.json` | Cursor hooks, with `{{SCRIPTS}}` for the runtime location | Merged into `.cursor/hooks.json` (power layer) | `hooks/cursor-hooks.json` |
 | `profiles/claude/L0.json` … `L3.json` | Permission and sandbox settings per autonomy level | Merged into `.claude/settings.json` (power layer) | Not used |

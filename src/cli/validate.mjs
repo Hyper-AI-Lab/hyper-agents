@@ -2,7 +2,7 @@
 // IDEs document, and checks that the rendered outputs are well formed.
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
-import { AUTONOMY_LEVELS, cursorSafeAgent, IDES, loadContent, PACKAGE_ROOT, renderMarketplaces, renderPlugin, renderProject } from '../lib/content.mjs'
+import { AUTONOMY_LEVELS, cursorSafeAgent, IDES, loadContent, PACKAGE_ROOT, pluginCoreRule, renderMarketplaces, renderPlugin, renderProject } from '../lib/content.mjs'
 import {
   validateAgent,
   validateClaudeHooks,
@@ -29,8 +29,11 @@ export async function validateContent(content) {
     problems.push(...validateAgent(text, file.replace(/\.md$/, ''), `agents/${file}`))
     problems.push(...validateAgent(cursorSafeAgent(text), file.replace(/\.md$/, ''), `agents/${file} (Cursor form)`))
   }
-  for (const [file, text] of content.pluginRules) problems.push(...validateRule(text, `cursor/rules/plugin/${file}`))
-  for (const [file, text] of content.projectRules) problems.push(...validateRule(text, `cursor/rules/project/${file}`))
+  try {
+    problems.push(...validateRule(pluginCoreRule(content), 'plugins/paacm/rules/paacm-core.mdc'))
+  } catch (error) {
+    problems.push(error.message)
+  }
   problems.push(...validateClaudeHooks(content.claudeHooks, 'hooks/claude.json'))
   problems.push(...validateCursorHooks(content.cursorHooks, 'hooks/cursor.json'))
   problems.push(...validateConfig(content.project.config).map((p) => `project/paacm.json: ${p}`))

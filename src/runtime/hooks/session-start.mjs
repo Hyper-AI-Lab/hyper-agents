@@ -22,8 +22,10 @@ runHook(async () => {
 
   const out = ['# PAACM session context', '', `PAACM runtime: \`${command} <command>\` (the instructions write this as \`paacm <command>\`).`]
 
+  // Plugin installs have no AGENTS.md block. Cursor then gets the core rules from
+  // the plugin's always-applied rule; Claude Code gets them here.
   const agents = await readTextOrNull(path.join(projectDir, 'AGENTS.md'))
-  if (agents === null || !hasBlock(agents)) {
+  if (tool === 'claude' && (agents === null || !hasBlock(agents))) {
     const rules = await readTextOrNull(path.join(scriptsDir, 'core-rules.md'))
     if (rules) out.push('', rules.trim())
   }

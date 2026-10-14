@@ -85,8 +85,6 @@ export async function loadContent(contentDir = CONTENT_DIR, runtimeDir = RUNTIME
     claudeBlock: await readText(contentDir, 'instructions/CLAUDE.md'),
     skills,
     agents: await pick('agents/', '.md'),
-    pluginRules: await pick('cursor/rules/plugin/', '.mdc'),
-    projectRules: await pick('cursor/rules/project/', '.mdc'),
     claudeHooks: await readJson(contentDir, 'hooks/claude.json'),
     cursorHooks: await readJson(contentDir, 'hooks/cursor.json'),
     profiles,
@@ -119,6 +117,21 @@ function skillFiles(content, name) {
     out.set('scripts/core-rules.md', content.agentsBlock)
   }
   return out
+}
+
+// The plugin's always-applied Cursor rule. A plugin cannot ship AGENTS.md, and
+// Cursor cloud agents do not run session-start hooks, so the core rules reach
+// Cursor through this rule. Generated from the same AGENTS.md block.
+const PROJECT_RUNTIME_SENTENCE =
+  "`node .claude/skills/paacm/scripts/paacm.mjs <command>`, run from the repository root. When PAACM is installed as a plugin, the session-start message gives the runtime's exact path."
+const PLUGIN_RUNTIME_SENTENCE = "the `paacm.mjs` script in the `paacm` skill's `scripts/` folder, run with `node` from the repository root; the session-start message gives its exact path."
+
+export function pluginCoreRule(content) {
+  if (!content.agentsBlock.includes(PROJECT_RUNTIME_SENTENCE)) {
+    throw new Error('instructions/AGENTS.md no longer contains the runtime sentence the plugin rule rewrites; update PROJECT_RUNTIME_SENTENCE in src/lib/content.mjs')
+  }
+  const body = content.agentsBlock.replace(PROJECT_RUNTIME_SENTENCE, PLUGIN_RUNTIME_SENTENCE).replace(/\n+Project-specific facts[\s\S]*$/, '\n')
+  return `---\ndescription: PAACM core rules for agentic coding in this workspace\nalwaysApply: true\n---\n\n${body}`
 }
 
 // Claude Code model aliases. Cursor accepts only `inherit` or a full model ID, so
@@ -167,7 +180,7 @@ export function renderPlugin(content) {
     }
   }
   for (const [file, text] of content.agents) put(`agents/${file}`, cursorSafeAgent(text))
-  for (const [file, text] of content.pluginRules) put(`rules/${file}`, text)
+  put('rules/paacm-core.mdc', pluginCoreRule(content))
   put('hooks/hooks.json', stableJson(withScripts(content.claudeHooks, SCRIPT_ROOTS.pluginClaude)))
   put('hooks/cursor-hooks.json', stableJson(withScripts(content.cursorHooks, SCRIPT_ROOTS.pluginCursor)))
   return out
@@ -246,7 +259,6 @@ export function renderProject(content, options) {
     }
     if (ides.has('cursor')) {
       for (const [name, text] of cursorAgentOverrides(content)) file(`.cursor/agents/${name}`, text)
-      for (const [name, text] of content.projectRules) file(`.cursor/rules/${name}`, text)
       entries.push({
         path: '.cursor/hooks.json',
         kind: 'json',

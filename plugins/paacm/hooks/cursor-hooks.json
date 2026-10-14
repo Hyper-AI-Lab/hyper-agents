@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/skills/paacm/scripts/hooks/session-start.mjs\"",
+        "timeout": 30
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/skills/paacm/scripts/hooks/protect.mjs\"",
+        "matcher": "Write|Delete",
+        "failClosed": true,
+        "timeout": 20
+      }
+    ],
+    "beforeShellExecution": [
+      {
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/skills/paacm/scripts/hooks/guard-shell.mjs\"",
+        "failClosed": true,
+        "timeout": 20
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/skills/paacm/scripts/hooks/post-edit.mjs\"",
+        "matcher": "Write",
+        "timeout": 300
+      }
+    ],
+    "stop": [
+      {
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/skills/paacm/scripts/hooks/stop-gate.mjs\"",
+        "loop_limit": 5,
+        "timeout": 1800
+      }
+    ]
+  }
+}

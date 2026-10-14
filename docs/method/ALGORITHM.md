@@ -336,7 +336,7 @@ A criterion is `passed` only with evidence produced by the harness in this sessi
 
 | Element | Claude Code | Cursor |
 |---|---|---|
-| Always-on instructions | `CLAUDE.md` importing `@AGENTS.md` | `AGENTS.md` (native) and `.cursor/rules/paacm-core.mdc` |
+| Always-on instructions | `CLAUDE.md` importing `@AGENTS.md` (project install); the `SessionStart` hook (plugin install) | `AGENTS.md`, read natively (project install); the always-applied rule `rules/paacm-core.mdc` (plugin install) |
 | The algorithm on demand | Skill `/paacm` and phase skills in `.claude/skills/` | The same skills, read from `.claude/skills/` |
 | Explorer, implementer, reviewer | Subagents in `.claude/agents/` with tool restrictions and models | The same files, read from `.claude/agents/`; `readonly: true` for the explorer and reviewer |
 | Orient (session start) | `SessionStart` hook | `sessionStart` hook in `.cursor/hooks.json` |
