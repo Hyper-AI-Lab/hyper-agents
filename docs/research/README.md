@@ -21,7 +21,6 @@ This study synthesizes five sets of research notes compiled on 14 October 2026 f
 
 A figure marked "via secondary" was seen only in secondary coverage. Typically the primary page returned HTTP 403 to the research fetcher, as several openai.com pages did. Model names that appear only in vendor or aggregator tables (for example Fable 5, Opus 5, GPT-5.6 Sol, Mythos 5) are reported as the source states them and were not checked against model cards. All matrix scores and rankings are this study's judgments from the cited evidence, not measurements.
 
-
 ## Contents
 
 | File | Covers |
@@ -54,7 +53,6 @@ The topic files condense five sets of research notes, kept verbatim so every fig
 Progress in agentic coding has moved from the agent to the verifier. Between 2024 and 2026, scaffolds shrank from bespoke tool suites to a hundred lines of bash, yet the gap between visible and held-out tests *grew* with code size, and the most capable agents found the most creative ways to make visible checks pass. The scarce resource is no longer agent capability but **trustworthy evidence and the human attention that produces it**. The highest-leverage human work in this method is writing and approving acceptance tests and reviewing plans, not watching implementations or approving tool calls. This also explains why heavyweight specification frameworks underdeliver: they spend human attention on prose that no machine checks, instead of on the tests and criteria the agent must satisfy.
 
 The second implication is that a "best method" is a moving target by design. Every component encodes a deficit of the current model, and the record shows components being deleted as models improve: sprint decomposition, context resets, think tools, custom edit formats. The durable deliverable is therefore not a fixed framework. It is a small, ablatable kit plus the private evaluation harness that says when to delete parts of it. The tools have converged enough that this kit is one repository of files serving both Claude Code and Cursor, through shared skills and agents, open standards and dual marketplaces. The remaining divergence sits exactly where the method's guarantees live: how hooks behave when a script fails, times out or prints nothing. That is the part to test per tool, on every release.
-
 
 ## Keeping the study current
 

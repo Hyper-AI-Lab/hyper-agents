@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }}, Node.js ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Validate the kit content (formats and frontmatter)
+        run: node bin/paacm.mjs validate
+      - name: Check that the generated plugin matches its sources
+        run: node bin/paacm.mjs build --check
+      - name: Run the tests
+        run: npm test
+      - name: Install into fixture projects, then run doctor and the checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          kit="$PWD"
+          root="$(dirname "$PWD")/paacm-fixtures"
+          rm -rf "$root"
+          commit() { git -C "$1" -c user.name=CI -c user.email=ci@example.com -c commit.gpgsign=false commit -q --allow-empty -m "$2"; }
+          for name in empty existing-agents node-app python-app; do
+            mkdir -p "$root/$name"
+            git -C "$root/$name" init -q
+          done
+          printf '# Team rules\n\nUse tabs.\n' > "$root/existing-agents/AGENTS.md"
+          printf '{"name":"app","private":true,"scripts":{"lint":"node -e 0","test":"node -e 0"}}\n' > "$root/node-app/package.json"
+          printf '[project]\nname = "app"\n\n[tool.ruff]\nline-length = 100\n' > "$root/python-app/pyproject.toml"
+          for name in empty existing-agents node-app python-app; do
+            dir="$root/$name"
+            git -C "$dir" add -A
+            commit "$dir" base
+            node "$kit/bin/paacm.mjs" init "$dir" --layer power
+            node "$kit/bin/paacm.mjs" detect "$dir"
+            node "$kit/bin/paacm.mjs" doctor "$dir"
+            git -C "$dir" add -A
+            commit "$dir" "install PAACM"
+            (cd "$dir" && node .claude/skills/paacm/scripts/paacm.mjs check --tier quick)
+          done
+          head -n 1 "$root/existing-agents/AGENTS.md" | grep -q '^<!-- paacm:begin'
+          tail -n 1 "$root/existing-agents/AGENTS.md" | grep -q '^Use tabs\.$'
+          node "$kit/bin/paacm.mjs" detect "$root/node-app" --write
+          (cd "$root/node-app" && node .claude/skills/paacm/scripts/paacm.mjs check --tier quick)
+          for name in empty existing-agents node-app python-app; do
+            node "$kit/bin/paacm.mjs" uninstall "$root/$name"
+          done
+          test "$(cat "$root/existing-agents/AGENTS.md")" = "$(printf '# Team rules\n\nUse tabs.')"
+
+  lint:
+    name: Lint documentation and validate the plugin with Claude Code
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - name: Lint the Markdown
+        run: npx --yes markdownlint-cli2@0.23.3 "**/*.md"
+      - name: Validate the plugin and the marketplace with Claude Code
+        run: |
+          npx --yes @anthropic-ai/claude-code@2.1.285 plugin validate plugins/paacm --strict
+          npx --yes @anthropic-ai/claude-code@2.1.285 plugin validate .

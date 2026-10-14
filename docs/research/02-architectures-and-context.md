@@ -42,9 +42,9 @@ The vendors now say the same thing. Claude Code's docs ask, for every line of CL
 
 The rule that follows is to put only non-inferable commands, gotchas and hard boundaries in the always-on file. Procedures go into on-demand skills. Anything that must happen goes into a deterministic hook.
 
-# One writer with many advisers beats parallel writers on coding work
+## One writer with many advisers beats parallel writers on coding work
 
-## Parallel writers fail on coupled work; isolated helpers succeed
+### Parallel writers fail on coupled work; isolated helpers succeed
 
 The only controlled study of agent topology comes from Google Research. It ran 180 configurations across three model families and five architectures, on finance, browsing, planning and workbench tasks; none were coding. **Every multi-agent variant degraded sequential reasoning tasks by 39–70%**. Centralized coordination gained 80.8% on parallelizable tasks. Independent agents amplified errors 17.2× against 4.4× for centralized ones. Once the single-agent baseline exceeded about 45%, coordination gave diminishing or negative returns ([arXiv 2512.08296](https://arxiv.org/abs/2512.08296v2)) [PP].
 
@@ -60,7 +60,7 @@ Anthropic's planner/generator/evaluator harness adds the model-dependence lesson
 
 The evidence therefore supports delegation for four kinds of work: read-heavy investigation that would pollute the main context, review or verification in a fresh context, mechanical execution under a clear brief, and truly independent units with their own workspace and an automated oracle. It argues against splitting one design across parallel writers, against delegating serial debugging, and against delegating work the single agent already does well.
 
-## Grounded selection, not more thinking, buys accuracy
+### Grounded selection, not more thinking, buys accuracy
 
 The largest reliable gains on top of a good single agent come from **sampling several attempts and selecting with a grounded verifier**. Anthropic's parallel test-time compute discards patches that break the repository's *visible* regression tests and then lets a scoring model choose. That lifted Opus 4 from 72.5% to 79.4% ([Anthropic](https://www.anthropic.com/news/claude-4)) [V] and Sonnet 4.5 from 77.2% to 82.0% ([Anthropic](https://www.anthropic.com/news/claude-sonnet-4-5)) [V]. OpenHands with a trained critic went from 60.6% with one rollout to 66.4% with five ([OpenHands](https://openhands.dev/blog/sota-on-swe-bench-verified-with-inference-time-scaling-and-critic-model)) [V].
 
@@ -76,7 +76,7 @@ More reasoning is not monotonically better either. A study of 4,018 SWE-bench tr
 
 **Planning** has the clearest controlled support, with a caveat that shapes the method. "From Plan to Action" analysed 21,120 SWE-agent trajectories across four models on Verified and Pro ([arXiv 2604.12147](https://arxiv.org/abs/2604.12147)) [PP]. Without a plan, agents fell back on internal workflows that were "often incomplete, overfit, or inconsistently applied". A standard plan improved resolution, and periodic plan reminders reduced plan violations. But **"a subpar plan hurts performance even more than no plan at all"**. The matched-settings harness study adds that for strong models, planning saves cost rather than adding accuracy ([arXiv 2609.20804](https://arxiv.org/abs/2609.20804)) [PP]. Plan review is therefore the highest-leverage human checkpoint, and planning should be skipped when, in Claude Code's words, "you could describe the diff in one sentence" ([Claude Code best practices](https://code.claude.com/docs/en/best-practices)) [V].
 
-## A strong lead with cheap helpers cuts cost 40–60% if the lead briefs well
+### A strong lead with cheap helpers cuts cost 40–60% if the lead briefs well
 
 Cognition's Devin Fusion pairs a frontier lead that takes "minimal actions" (plan, interpret, delegate, review) with a cheaper sidekick that executes. On Cognition's FrontierCode 1.1 Extended benchmark ([Cognition](https://cognition.com/blog/devin-fusion)) [V]:
 
@@ -92,7 +92,7 @@ A companion study of 3,000 sessions shows that the saving depends on *how* the l
 
 Small models are now close behind on standardized scaffolds. Haiku 4.5 is reported at 73.3% on Verified at $1/$5 per million tokens ([Anthropic](https://www.anthropic.com/news/claude-haiku-4-5)) [V], and at 70.0% against Opus 4.5's 76.8% on the bash-only board ([Willison](https://simonwillison.net/2026/Feb/19/swe-bench/)) [PP, via secondary]. One implementation detail matters here. Claude Code's built-in Explore subagent uses the main conversation's model by default, so cheap exploration needs an explicit `model: haiku` override or `CLAUDE_CODE_SUBAGENT_MODEL` ([Claude Code subagents](https://code.claude.com/docs/en/sub-agents)) [V].
 
-## Long runs survive on files and git, not on the context window
+### Long runs survive on files and git, not on the context window
 
 Anthropic's long-running harness found compaction alone insufficient for building a production-quality app across many context windows ([Anthropic](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents)) [V]. Agents one-shotted features and ran out of context mid-way, later sessions saw progress and declared "victory early", features were marked complete without end-to-end tests, and sessions ended in broken, undocumented states. The fix was an initializer session that writes an `init.sh`, a progress file, a JSON feature list of 200+ items all marked `passes: false`, and an initial commit. JSON was chosen because the model is less likely to tamper with it than with Markdown. Every later session reads `pwd`, the git log and the progress file, starts the app through `init.sh` and runs a smoke test, then takes exactly **one feature**. It verifies that feature end-to-end in a browser, flips only its `passes` flag ("It is unacceptable to remove or edit tests"), commits with a descriptive message and updates the progress file. OpenAI's ExecPlans encode the same idea as a self-contained, restartable plan with living Progress, Surprises & Discoveries, Decision Log and Outcomes sections. "Validation is not optional" ([OpenAI Cookbook](https://developers.openai.com/cookbook/articles/codex_exec_plans)) [V]. OpenAI also claims a similar plan enabled more than seven hours of work from one prompt, a claim without published methodology.
 

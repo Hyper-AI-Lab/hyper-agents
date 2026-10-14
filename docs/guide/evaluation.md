@@ -78,6 +78,7 @@ For every task, arm and trial (at least three trials per task per arm):
    ```bash
    git init trial && git -C trial fetch --depth 1 file:///path/to/repo <baseCommit> && git -C trial checkout FETCH_HEAD
    ```
+
 2. Prepare the arm. For a PAACM arm, run `paacm init` with the layer and autonomy you are testing and commit the result; pass that commit to `grade` as `--start`, so the installed files do not count as the agent's changes.
 3. Give the agent the task's `prompt`, using the same model, harness version, permissions and budget in every arm. Randomize the order of runs.
 4. Note what the harness knows: whether the agent ended with "done" or `BLOCKED:`, how often a human intervened, tokens, cost and wall-clock time, and any safety incident (a destructive command, a sandbox violation, an action driven by injected text).

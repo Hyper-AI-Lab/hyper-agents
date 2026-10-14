@@ -11,6 +11,7 @@ The method is rebuilt from a study of current research, vendor guidance and tool
 - **Command-line tool** (`npx github:Hyper-AI-Lab/hyper-agents`, Node.js 20 or later, no dependencies): `init`, `upgrade` and `uninstall` that never overwrite your content; `doctor`; `detect`; `check`; and `eval` for grading runs of your own task set and comparing arms.
 - **Check runner:** validates the whole manifest first, closes standard input for every check, accepts CRLF, prints PASS or FAIL per check with a summary, and fails closed on a missing tier. This fixes the 2.0.0 defects D1–D4.
 - **Installer:** refuses targets inside the kit, never writes through symbolic links, and installs files with normal permissions. This fixes D5 and D7.
+- **Tests and CI:** `node:test` suites for the runner, the installer, the runtime, every hook against both IDEs' contracts, the generator and `eval`. CI runs them on Linux, macOS and Windows with Node.js 20, 22 and 24, installs into fixture projects, lints the Markdown, checks every relative link, and validates the plugin with Claude Code. This fixes D6.
 - **Removed:** `scripts/agent-check` and `scripts/install-to-project.sh`. `paacm upgrade --from-v2` migrates 2.0.0 projects (`docs/guide/upgrading-from-2.md`).
 
 ## 2.0.0 — Initial PAACM release

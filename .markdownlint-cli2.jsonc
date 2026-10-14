@@ -1,0 +1,21 @@
+// Markdown lint for the documentation and the kit content (run in CI).
+{
+  "config": {
+    "default": true,
+    // Prose is written one paragraph per line.
+    "MD013": false,
+    // Tables use "| a | b |" rows with a "|---|---|" delimiter row.
+    "MD060": false,
+    // Subagent definitions, CLAUDE.md imports and the core-rules text do not start with a heading.
+    "MD041": false
+  },
+  "ignores": [
+    // Generated from src/content, which is linted.
+    "plugins/**",
+    // Fill-in forms: their <placeholders> are not HTML.
+    "src/content/skills/paacm/references/templates/**",
+    // The evidence notes are kept as compiled; the curated study built from them is linted.
+    "docs/research/notes/**",
+    "node_modules/**"
+  ]
+}
