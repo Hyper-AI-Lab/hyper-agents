@@ -1,0 +1,10 @@
+{
+  "features": [
+    {
+      "id": "F1",
+      "description": "<a user-visible behaviour>",
+      "test_steps": ["<command or manual step that proves it>"],
+      "passes": false
+    }
+  ]
+}

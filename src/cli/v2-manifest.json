@@ -1,0 +1,23 @@
+{
+  "version": "2.0.0",
+  "commit": "ca85a03c",
+  "files": {
+    "AGENTS.md": "bd5c1e55742d543cf3aaea0040f8368bb6cde51530d250f7c4d28b616c59662e",
+    "CLAUDE.md": "2eec44dd5bc310aad662a6429f04360494ee5eb2c445ab81427154bca325e4bf",
+    ".agent/workflows/implement.md": "4a7c700d8b425a597a731d4d905ed657a146c039b973cee0f3d2919c90410380",
+    ".agent/workflows/debug.md": "c422954a9a801b517551eb0e6c2e973bf4f1651c1017730a547ae36d4f687fc1",
+    ".agent/workflows/review.md": "927ed1db0816e83e080cdfb1475604cb60e9e351be86a89e91329a8ee6ddc28d",
+    ".agent/policies/security.md": "aba229c63304de4bf220f4f0e1d05f29c356ed8905f30e89aa906df00929cd59",
+    ".agent/policies/verification.md": "23289fc404df923e4b4a37e88a55995af84f9a5288b37eee144b1234150a0399",
+    ".agent/templates/task-contract.md": "75a11b7b95d272337c65d0be0effd3daf19cb580bc52d343d9f90eda12c8f3a1",
+    ".agent/integrations/mcp-inventory.md": "237550465aeb7ded663fcf62a9426c254b49a93defe51556247a82145a03107a",
+    ".agent/evals/task-schema.md": "bbd256556eba6df93b486ba7bc42a1add7f0062da03bcb9937221fa48357cc6a",
+    ".agent/checks.conf": "a12765ec92a44b825c80fec5dd2f836327ab7f005031d6b6f01ce9e7299dc879",
+    ".agent/state/.gitignore": "240a3e0d37d2e86b614063f5347eb02d4f99ca6c254de6b82871ff8d95532a7d",
+    ".claude/skills/paacm/SKILL.md": "5f6833b262a97a8dfa9be980ff79408dac16567ef9b1243e23ee4dbf9e202cf0",
+    ".cursor/commands/paacm.md": "2470f04b867b5e42ca5322446aa38e19c07778625f7197328efb3086cf0c3414",
+    "scripts/agent-check": "027750038f9e347954935d834c28b36818c39abe598004bf835721baf775aa9e",
+    "scripts/install-to-project.sh": "adb5787f4ff59a8a6b31c06680337dbd09700d7274e368bf568802649fb5b890",
+    "docs/agentic-kit/USER_GUIDE.md": "ac8efce49291f303d8f73264bb4c4cda0745a7bec5ad8c77c3ce6b6e55d549d7"
+  }
+}

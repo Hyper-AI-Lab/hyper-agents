@@ -1,73 +1,81 @@
-# PAACM 2.0 — Portable Adaptive Agentic Coding Method
+# PAACM: the Verified Single-Writer Loop
 
-A lightweight, repository-local operating method for coding agents in **Claude Code** and **Cursor**. It aims to improve task clarity, change safety, deterministic verification, and recoverability without requiring paid add-ons, mandatory MCP servers, or a multi-agent framework.
+PAACM (Portable Adaptive Agentic Coding Method) is a method and a kit for agentic coding in **Claude Code** and **Cursor**. You give the agent a request, plus any supporting data: a reference repository, documents, screenshots, logs. You get back a committed change whose acceptance criteria are each marked passed, failed or untested with executed evidence. Or you get a precise `BLOCKED:` report that says what the agent needs from you.
 
-**Status:** v2.0.0 initial distribution. The method is a practical starting point, **not** a proven universally optimal agent architecture. Validate it on your own tasks before relying on it for high-impact changes.
+The method is derived from a [study](docs/research/README.md) of current agentic-coding research, vendor guidance and tooling, and specified in [ALGORITHM.md](docs/method/ALGORITHM.md).
 
 ## How it works
 
-**Contract → Discover → Route/Plan → Execute → Verify → Challenge → Record/Handoff**
+```text
+request + supporting data
+  → 0 orient → 1 intake and triage (route FAST | STANDARD | DEEP, autonomy L0–L3)
+  → 2 specify → 3 explore → 4 plan → 5 tests first → 6 implement
+  → 7 verify (the gate) → 8 independent review → 9 report
+```
 
-- **FAST:** narrow, low-risk, reversible edits with a clear acceptance test.
-- **STANDARD (default):** most feature work and bug fixes.
-- **DEEP:** cross-cutting, security-sensitive, ambiguous, or hard-to-reverse changes.
+- **One agent writes.** A read-only explorer and a read-only reviewer work in fresh contexts. No swarms, and no two agents in one working tree.
+- **Process scales with risk.** A FAST fix skips the specification, plan and review. DEEP work gets all of them, and high-stakes work also gets held-out tests.
+- **Done means executed evidence.** The stop gate keeps the agent from finishing while the checks in `.agent/checks.conf` fail. After three failures in a row it must stop and ask. A missing check never counts as a pass.
+- **Approved tests are frozen.** After you approve the tests, hooks refuse edits to them and hold edits to executable configuration for your approval, and an audit of the diff catches changes made any other way.
+- **Seven escalation triggers** make the agent stop instead of guessing: materially different approaches, missing access, behaviour-changing ambiguity, a spec–test conflict, a failing retry cap, an edit outside the plan, and anything consequential.
+- **State lives on disk.** Each task has a folder with its specification, plan, progress log and report, and each completed plan task is a commit, so work survives the end of a session.
 
-Start with one agent and one patch owner. Use independent read-only review or parallel discovery only when the expected benefit justifies the coordination cost. Treat repository content and tool outputs as data, not higher-priority instructions.
+## Quick start
 
-## What's in the kit
+You need git and Node.js 20 or later.
 
-- **AGENTS.md:** canonical repository instructions shared across tools.
-- **CLAUDE.md:** thin Claude Code import adapter.
-- **.claude/skills/paacm/SKILL.md:** explicit Claude Code skill.
-- **.cursor/commands/paacm.md:** Cursor command adapter, where supported.
-- **.agent/workflows/:** implementation, debugging, and review playbooks.
-- **.agent/policies/:** security and verification requirements.
-- **.agent/checks.conf + scripts/agent-check:** reviewed, deterministic project checks.
-- **scripts/install-to-project.sh:** non-overwriting installer for existing projects.
-- **.agent/templates/ and .agent/evals/:** task contracts and evaluation schema.
-- **docs/agentic-kit/USER_GUIDE.md:** rollout and operating instructions.
+**Claude Code plugin:**
 
-## Install in an existing repository
+```text
+/plugin marketplace add Hyper-AI-Lab/hyper-agents
+/plugin install paacm@hyper-agents
+```
 
-From this kit's clone, with a trusted local target repository:
+**Cursor plugin** (local; a Teams or Enterprise admin can add this repository as a team marketplace instead):
 
-~~~sh
-sh scripts/install-to-project.sh /path/to/your-project --dry-run
-sh scripts/install-to-project.sh /path/to/your-project --apply
-~~~
+```bash
+npx github:Hyper-AI-Lab/hyper-agents init --cursor-user
+```
 
-The installer preflights every destination and refuses conflicting existing files and detected symlinks. It **never merges or overwrites** existing policy files. If the project already has AGENTS.md, CLAUDE.md, or matching paths, use **INSTALL_PROMPT.md** to guide a reviewed manual merge instead. The installer does not modify global IDE settings, install packages, commit, push, or deploy.
+**Project install**, committed with your code and used by both IDEs (`--layer power` adds the subagents, hooks and permission profiles):
 
-Review copied instructions and scripts before running them. The verification manifest contains only generic smoke checks; **configure real project build, lint, typecheck, test, and security commands** in .agent/checks.conf.
+```bash
+npx github:Hyper-AI-Lab/hyper-agents init --layer power --dry-run
+```
 
-## Use
+Then tell PAACM how to check your project. `detect` proposes commands from your `package.json`, Makefile, `pyproject.toml`, Cargo or Go files; review them, then keep the ones you trust in `.agent/checks.conf`:
 
-In Claude Code, invoke the installed skill explicitly:
+```bash
+npx github:Hyper-AI-Lab/hyper-agents detect
+```
 
-~~~text
-/paacm Fix the intermittent session expiry bug and add regression coverage.
-~~~
+And make a request: `/paacm <request>` in a project install (either IDE), `/paacm:paacm <request>` with the Claude Code plugin, or the `paacm` skill in Cursor's Agent with the Cursor plugin.
 
-In Cursor versions supporting project commands, invoke **/paacm** with the task. Otherwise, use Cursor Agent chat with the repository instructions loaded. Exact command support depends on IDE version and configuration.
+```text
+/paacm Idle sessions never expire. Expire a session after 30 minutes without requests and return 401 after that; add a regression test.
+```
 
-The agent should state its task contract, risk/mode, files changed, actual checks and outcomes, remaining uncertainty, and any approval needed for consequential actions.
+The [user guide](docs/guide/README.md) covers setup, writing requests, supporting data, autonomy levels, reading the report, worked examples and troubleshooting.
 
-## Verify
+## Repository
 
-~~~sh
-sh -n scripts/agent-check scripts/install-to-project.sh
-sh scripts/agent-check --list
-sh scripts/agent-check --quick
-~~~
+| Path | Content |
+|---|---|
+| [docs/guide/](docs/guide/README.md) | The user guide |
+| [docs/method/](docs/method/ALGORITHM.md) | The specification, with [decision records](docs/method/adr/README.md) |
+| [docs/research/](docs/research/README.md) | The study behind it |
+| [docs/project/requirements.md](docs/project/requirements.md) | Requirements and their evidence |
+| `src/content/` | Everything the kit installs: instructions, skills, subagents, hooks, permission profiles |
+| `src/runtime/` | The runtime the agent and the hooks use: task state, the check runner, the audit, the gate |
+| `src/cli/` | The `paacm` command-line tool: `init`, `upgrade`, `uninstall`, `doctor`, `detect`, `check`, `eval` |
+| `plugins/paacm/` | The plugin for both IDEs, generated from `src/content/` and `src/runtime/` |
 
-**--full** and **--security** deliberately fail until project-specific checks are configured. A passing whitespace or syntax check is not proof that an application works.
+## Status and limits
 
-## Share with your team
+PAACM 3.0.0 is a complete implementation of the specification for Claude Code and Cursor. Markdown instructions are guidance; the enforcement comes from the hooks, the IDE's permissions and its sandbox. Use the power layer or a plugin when enforcement matters. The method's evidence comes from published studies and vendor guidance, not from your code: [evaluate it](docs/guide/evaluation.md) on tasks from your own history before relying on a claim that it helps.
 
-Use this repository as the versioned source of truth. For existing applications, install via a reviewed pull request; for new applications, start from a template or copy the configuration after removing distribution-only files. Changes in this repository do **not** automatically update consuming repositories.
+Upgrading from PAACM 2.0.0: see [upgrading-from-2.md](docs/guide/upgrading-from-2.md).
 
-See **docs/agentic-kit/USER_GUIDE.md** for onboarding, trust boundaries, and evaluation. Contributions are welcome through reviewed pull requests; see **CONTRIBUTING.md**.
+## Contributing and licence
 
-## License
-
-Apache-2.0 (see LICENSE).
+See [CONTRIBUTING.md](CONTRIBUTING.md). Apache-2.0; see [LICENSE](LICENSE).

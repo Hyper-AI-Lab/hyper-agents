@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [{ "command": "node \"{{SCRIPTS}}/hooks/session-start.mjs\"", "timeout": 30 }],
+    "preToolUse": [{ "command": "node \"{{SCRIPTS}}/hooks/protect.mjs\"", "matcher": "Write|Delete", "failClosed": true, "timeout": 20 }],
+    "beforeShellExecution": [{ "command": "node \"{{SCRIPTS}}/hooks/guard-shell.mjs\"", "failClosed": true, "timeout": 20 }],
+    "postToolUse": [{ "command": "node \"{{SCRIPTS}}/hooks/post-edit.mjs\"", "matcher": "Write", "timeout": 300 }],
+    "stop": [{ "command": "node \"{{SCRIPTS}}/hooks/stop-gate.mjs\"", "loop_limit": 5, "timeout": 1800 }]
+  }
+}

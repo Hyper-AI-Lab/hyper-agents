@@ -1,0 +1,18 @@
+{
+  "name": "hyper-agents",
+  "owner": {
+    "name": "Hyper AI Lab",
+    "url": "https://github.com/Hyper-AI-Lab"
+  },
+  "metadata": {
+    "description": "PAACM agentic-coding kit for Claude Code and Cursor."
+  },
+  "plugins": [
+    {
+      "name": "paacm",
+      "description": "PAACM: the Verified Single-Writer Loop for agentic coding. One writer agent, read-only explorer and reviewer subagents, tests protected after approval, and completion gated on executed checks.",
+      "version": "3.0.0",
+      "source": "plugins/paacm"
+    }
+  ]
+}

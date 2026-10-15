@@ -1,0 +1,11 @@
+{
+  "terminalAllowlist": [
+    "git status",
+    "git diff",
+    "git log",
+    "git show",
+    "git rev-parse",
+    "node .claude/skills/paacm/scripts/paacm.mjs task status",
+    "node .claude/skills/paacm/scripts/paacm.mjs check --list"
+  ]
+}
