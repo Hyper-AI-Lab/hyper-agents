@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.3.0 — Error-handling review and companion plugins
+
+- **Error-handling reviewer.** `paacm-silent-failure-hunter`, adapted from Anthropic's `silent-failure-hunter` (Apache License 2.0), reviews the same `review-input.md` as the reviewer when a diff changes error handling, and reports only failures the changed code can hide: swallowed errors, overly broad catches, unrequested fallbacks, retries that give up silently ([ADR 0019](docs/method/adr/0019-error-handling-review-and-companion-plugins.md)).
+- **Security scan for high-stakes work.** When Anthropic's `claude-security` plugin is installed, verification of high-stakes work runs its scan of the changes at high effort.
+- **Companion plugins.** The setup guide explains `claude-security` and `security-guidance`, including what `security-guidance` installs at runtime and which of its reviews duplicate PAACM's.
+- **Research addendum.** An assessment of Anthropic's official plugins in [07-claude-code-and-cursor.md](docs/research/07-claude-code-and-cursor.md).
+
 ## 3.2.0 — Code intelligence and test strength
 
 - **Reasoning effort by role.** The reviewer runs at `high` effort and the implementer at `medium`, as [ADR 0010](docs/method/adr/0010-model-allocation.md) prescribes; Cursor ignores the field.

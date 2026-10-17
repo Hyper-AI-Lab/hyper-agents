@@ -39,7 +39,7 @@ test('every generated skill, agent, rule and hook file is valid', () => {
     if (inner.startsWith('rules/')) assert.deepEqual(validateRule(text, rel), [])
   }
   assert.equal(skills, 3)
-  assert.equal(agents, 3)
+  assert.equal(agents, 4)
   assert.deepEqual(validateClaudeHooks(JSON.parse(plugin.get(`${PLUGIN_DIR}/hooks/hooks.json`)), 'hooks.json'), [])
   assert.deepEqual(validateCursorHooks(JSON.parse(plugin.get(`${PLUGIN_DIR}/hooks/cursor-hooks.json`)), 'cursor-hooks.json'), [])
   assert.equal(JSON.parse(plugin.get(`${PLUGIN_DIR}/.cursor-plugin/plugin.json`)).hooks, './hooks/cursor-hooks.json')
@@ -126,6 +126,15 @@ test('every reference of the paacm skill ends with the line that loads its proje
     )
   }
   assert.ok(!files.some(([rel]) => rel.startsWith('references/templates/')), 'templates are not references')
+})
+
+test('the error-handling reviewer is read-only and both review paths run it on error-handling changes', () => {
+  const agent = content.agents.get('paacm-silent-failure-hunter.md')
+  assert.match(agent, /^tools: Read, Grep, Glob, LSP$/m)
+  assert.match(agent, /^readonly: true$/m)
+  assert.match(agent, /Apache License 2\.0/)
+  assert.match(content.skills.get('paacm').get('references/08-review.md'), /also delegate to `paacm-silent-failure-hunter` with the same file/)
+  assert.match(content.skills.get('paacm-review').get('SKILL.md'), /also delegate to `paacm-silent-failure-hunter` with the same file/)
 })
 
 test('the skills explain project extensions, and verify and review read theirs', () => {
