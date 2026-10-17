@@ -57,19 +57,24 @@ export function validateTaskSet(set) {
   return problems
 }
 
+// True when a command uses {{HIDDEN}} without a quote right before it, so that a
+// hidden-tests path containing spaces would split into several shell words.
+export function unquotedHidden(command) {
+  return [...command.matchAll(/\{\{HIDDEN\}\}/g)].some((m) => !/["']$/.test(command.slice(0, m.index)))
+}
+
 async function loadTaskSet(projectDir, tasksFile) {
   const file = tasksFile ? path.resolve(tasksFile) : fromPosix(projectDir, TASKS_PATH)
   const set = await readJsonOrNull(file)
   if (set === null) throw new Error(`no task set at ${file}; see docs/guide/evaluation.md for the format`)
   const problems = validateTaskSet(set)
   if (problems.length) throw new Error(`${file}: ${problems.join('; ')}`)
-  return {
-    ...set,
-    file,
-    repeat: set.repeat ?? 3,
-    timeoutSec: set.timeoutSec ?? 900,
-    hiddenAbs: set.hiddenDir ? path.resolve(path.dirname(file), set.hiddenDir) : null,
+  const hiddenAbs = set.hiddenDir ? path.resolve(path.dirname(file), set.hiddenDir) : null
+  if (hiddenAbs && /\s/.test(hiddenAbs)) {
+    const unquoted = set.tasks.filter((t) => unquotedHidden(t.acceptance)).map((t) => t.id)
+    if (unquoted.length) throw new Error(`${file}: the hidden-tests path "${hiddenAbs}" contains a space; put {{HIDDEN}} in quotes in the acceptance command of ${unquoted.join(', ')}`)
   }
+  return { ...set, file, repeat: set.repeat ?? 3, timeoutSec: set.timeoutSec ?? 900, hiddenAbs }
 }
 
 async function readRuns(projectDir) {

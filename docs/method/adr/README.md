@@ -1,6 +1,6 @@
 # Decision records
 
-Each record states one design decision of PAACM 3.0, the evidence behind it, and what it costs. They are numbered in the order the [algorithm](../ALGORITHM.md) relies on them.
+Each record states one design decision of PAACM 3, the evidence behind it, and what it costs. They are numbered in the order the [algorithm](../ALGORITHM.md) relies on them.
 
 | Record | Decision |
 |---|---|

@@ -19,6 +19,7 @@ import {
   currentTask,
   finishTask,
   logProgress,
+  reopenTests,
   resumeTask,
   setPhase,
   startTask,
@@ -36,6 +37,7 @@ Task:
   task phase <specifying|exploring|planning|testing|implementing|verifying|reviewing>
   task log "<text>"
   task approve-tests
+  task reopen-tests --reason "<the test change the human approved>"
   task review-input
   task block --trigger <1-7> --reason "<text>"
   task done
@@ -48,7 +50,8 @@ Verification:
   gate [--tier <quick|full|security>] [--json]
 
 Exit codes: 0 success, 1 failure or refused, 2 usage or configuration error,
-3 a required check tier is not configured, 4 a protected test file changed.`
+3 a required check tier is not configured, 4 a protected test file or the gate
+configuration changed after the tests were approved.`
 
 // The project root: the nearest ancestor holding .agent/paacm.json, else the git
 // top level, else the current directory.
@@ -123,6 +126,13 @@ async function taskCommand(args, out, projectDir) {
       out(`Tests approved at ${shortSha(state.testsApprovedAt)}; test files are now read-only for task ${state.id}.`)
       return EXIT.OK
     }
+    case 'reopen-tests': {
+      const { values } = parseArgs({ args: rest, options: { reason: { type: 'string' } }, strict: true })
+      if (!values.reason) throw new UsageError('task reopen-tests needs --reason "<the test change the human approved>"')
+      const { state, previous } = await reopenTests(projectDir, { reason: values.reason })
+      out(`Tests of task ${state.id} reopened (they were approved at ${shortSha(previous)}). Make only the change the human approved, commit it, then run paacm task approve-tests again.`)
+      return EXIT.OK
+    }
     case 'review-input': {
       if (rest.length) throw new UsageError('task review-input takes no arguments')
       const { file } = await writeReviewInput(projectDir)
@@ -186,8 +196,10 @@ export async function run(argv, { out = (l) => process.stdout.write(`${l}\n`), e
           sink: values.json ? undefined : (t) => process.stdout.write(t),
           log: values.json ? () => {} : out,
         })
+        const code = result.passed ? EXIT.OK : EXIT.FAILED
         if (values.json) out(JSON.stringify(result))
-        return result.passed ? EXIT.OK : EXIT.FAILED
+        else out(`paacm check: exit ${code}`)
+        return code
       }
       case 'audit': {
         const { values } = parseArgs({ args, options: { json: { type: 'boolean' } }, strict: true })
@@ -215,6 +227,7 @@ export async function run(argv, { out = (l) => process.stdout.write(`${l}\n`), e
           out(JSON.stringify(rest))
         }
         if (result.code === GATE.CONFIG) err(result.error)
+        if (!values.json) out(`paacm gate: exit ${result.code}`)
         return result.code
       }
       default:

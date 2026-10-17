@@ -1,7 +1,8 @@
 // The gate: the protected-path audit followed by the check tier for the current
 // task's route. The result and the consecutive-failure count are recorded in the
 // task state. Exit codes: 0 passed, 1 a check failed, 2 invalid configuration,
-// 3 a required tier has no checks, 4 a protected test file changed.
+// 3 a required tier has no checks, 4 a protected test file or the gate's own
+// configuration changed after the tests were approved.
 import path from 'node:path'
 import { auditTask } from './audit.mjs'
 import { MANIFEST_PATH, missingTiers, parseManifest } from './checks.mjs'
@@ -80,7 +81,7 @@ export async function runGate(projectDir, { tier, log = () => {}, sink } = {}) {
   for (const w of audit.warnings) log(`WARN protected configuration changed in this task: ${w.path} (the report must state who approved it)`)
   if (audit.violations.length) {
     for (const v of audit.violations) log(`PROTECTED ${v.path}${v.detail ? `: ${v.detail}` : ' changed after the tests were approved'}`)
-    log('GATE FAILED: protected test files changed. Undo those edits, or stop with BLOCKED: trigger 4 if the change is needed.')
+    log('GATE FAILED: protected test files or the gate configuration changed after the tests were approved. Undo those edits, or stop with BLOCKED: trigger 4 if the change is needed; after the human approves it, run paacm task approve-tests again.')
     const failures = await record(false, 'protected-paths')
     return { code: GATE.PROTECTED, tier: effectiveTier, audit, results: [], gateFailures: failures, retryCap: config.gate.retryCap, task: state }
   }

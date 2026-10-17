@@ -21,6 +21,8 @@ From the commit at which acceptance tests are approved, tests, CI configuration,
 
 Legitimate test changes need a human-approved path, which the algorithm provides (a new approved baseline). Edit-tool hooks miss edits made through the shell, which is why the diff audit is mandatory.
 
+Since 3.4.1 the audit also treats changes to the check manifest and `.agent/paacm.json` after the approved baseline as violations, since either could weaken the gate. The protect hook and the shell guard refuse direct edits to the task state, resolve symbolic links, and match case-insensitively where the file system does.
+
 ## Alternatives considered
 
 Prompt-only prohibitions (rejected); unlimited retries (rejected).

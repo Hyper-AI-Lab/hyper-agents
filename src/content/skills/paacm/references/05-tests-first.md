@@ -22,7 +22,7 @@
 **From this point on, test files, CI configuration, `.agent/checks.conf` and agent configuration are read-only to you.** The protect hook refuses edits to them, and `paacm audit` reports any change made by other means (including shell commands). If a test turns out to contradict the specification, or a legitimate test change is needed:
 
 - Stop with `BLOCKED:` trigger 4 (`escalation.md`) and show the conflicting lines.
-- Only after the human explicitly approves the change in the conversation may it be made, by the human or by you, followed by a new `paacm task approve-tests`.
+- Only after the human explicitly approves the change in the conversation, run `paacm task reopen-tests --reason "<the approved change>"`. The IDE asks the human to confirm it. Make only that change, commit it, and run `paacm task approve-tests` again.
 
 ---
 

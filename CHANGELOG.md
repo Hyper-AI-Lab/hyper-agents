@@ -1,5 +1,23 @@
 # Changelog
 
+## 3.4.1 — Hardening from an audit
+
+An audit of 3.4.0 found ways around the gates. Each is fixed and covered by a test in `test/hardening.test.mjs`.
+
+- **The gate's own configuration is frozen with the tests.** Changing `.agent/checks.conf` or `.agent/paacm.json` after `paacm task approve-tests` is now a violation (exit 4), not a warning. Before, a shell edit could remove a failing check, or empty the protected test patterns, and the gate still passed. A change the human approved is followed by a new `paacm task approve-tests`.
+- **Task state is written only by the runtime.** The protect hook refuses edits to `.agent/tasks/<task>/state.json` and `.agent/tasks/CURRENT`, and the shell guard refuses shell writes to them, to the check manifest, `.agent/paacm.json` and project extensions. Before, deleting `testsApprovedAt` from `state.json` turned test protection off.
+- **The protect hook fails closed when it cannot find the edited file.** Before, a tool call without a recognised path field was allowed. In Cursor, whose `preToolUse` input fields are undocumented, an edit with an unrecognised payload is now refused with a message saying so.
+- **Paths are judged by their real location.** The protect hook resolves symbolic links, matches case-insensitively on macOS and Windows, and no longer treats a file whose name starts with `..` as outside the project.
+- **Hiding changes from git needs approval.** The shell guard asks before `git update-index --assume-unchanged` or `--skip-worktree`, which would hide an edit from the audit.
+- **Evaluation:** `eval` refuses a task set whose hidden-tests path contains a space while an acceptance command uses `{{HIDDEN}}` without quotes.
+
+Headless Claude Code runs on a fixture project found four more:
+
+- **A test change the human approved can now be made.** The method allowed it, but the protect hook refused every edit to approved tests and nothing could lift that, so the task stuck until the human edited the file. `paacm task reopen-tests --reason "<the approved change>"` clears the baseline; the shell guard asks the human to confirm it, and `approve-tests` sets a new one.
+- **Approvals are not blocks.** The agent ended an ordinary request for test approval with a `BLOCKED:` line. The always-on rules and `escalation.md` now say that the approvals the phases ask for are ordinary questions.
+- **`gate` and `check` print their exit code** as a last line, `paacm gate: exit 0`, so the report can quote it without a compound command, which the IDE's allow rule refuses.
+- **Headless runs need a trusted folder.** In `claude -p`, Claude Code ignores a project's `permissions.allow` rules in a folder that was never trusted, so every PAACM runtime command was refused. The evaluation guide, the unattended (L3) example and `autonomy.md` now say how to trust the folder or pass the rules with `--allowedTools`. `runtime.md` asks for one runtime command per call.
+
 ## 3.4.0 — Questions in rounds and loop-first debugging
 
 - **Questions in rounds.** Intake and specification ask every open question that does not depend on another open answer in one numbered round, each with a recommended answer worded so that "yes" accepts it, instead of one question per turn. The agent finds facts itself and asks only for decisions. The specification phase checks the request's terms against the project's glossary.
