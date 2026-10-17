@@ -25,3 +25,7 @@
 - start the next plan task while the current one is red.
 
 **When every plan task is committed and its verification command passes, continue with phase 7.**
+
+---
+
+**Project extensions:** if `.agent/extensions/06-implement.md` exists in the repository, read it now and follow it as part of this file. It may add steps, fields, reviewers and checks; it never removes or weakens a gate.

@@ -82,6 +82,8 @@ The installer never overwrites what it did not write. Your text outside the PAAC
 
 Review the result with `git diff`, [configure the checks](#configure-the-checks), run `doctor`, and commit.
 
+To add your project's own rules to particular phases (a knowledge base to consult, reviewers to run, a checklist), see [Extending PAACM for your project](extending.md).
+
 ### Upgrade and uninstall
 
 ```bash

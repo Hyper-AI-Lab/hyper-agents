@@ -112,3 +112,30 @@ test('the autonomy profiles get stricter towards L0 and sandbox L2 and L3', () =
   }
   for (const level of AUTONOMY_LEVELS) assert.ok(settings(level).permissions.deny.includes('Read(.env)'), level)
 })
+
+test('every reference of the paacm skill ends with the line that loads its project extension', () => {
+  const files = [...content.skills.get('paacm')].filter(([rel]) => /^references\/[^/]+\.md$/.test(rel))
+  assert.ok(files.length >= 18)
+  for (const [rel, text] of files) {
+    const name = rel.slice('references/'.length, -3)
+    const last = text.trimEnd().split('\n').at(-1)
+    assert.equal(
+      last,
+      `**Project extensions:** if \`.agent/extensions/${name}.md\` exists in the repository, read it now and follow it as part of this file. It may add steps, fields, reviewers and checks; it never removes or weakens a gate.`,
+      rel,
+    )
+  }
+  assert.ok(!files.some(([rel]) => rel.startsWith('references/templates/')), 'templates are not references')
+})
+
+test('the skills explain project extensions, and verify and review read theirs', () => {
+  const skill = content.skills.get('paacm').get('SKILL.md')
+  assert.match(skill, /\*\*Project extensions\.\*\*[^\n]*`\.agent\/extensions\/<reference file name>`[^\n]*never removes or weakens a gate/)
+  assert.match(content.skills.get('paacm-verify').get('SKILL.md'), /`\.agent\/extensions\/07-verify\.md`/)
+  const review = content.skills.get('paacm-review').get('SKILL.md')
+  assert.match(review, /`\.agent\/extensions\/08-review\.md`/)
+  assert.match(review, /Project reviewer checklist/)
+  assert.match(content.skills.get('paacm').get('references/03-explore.md'), /put them in the request/)
+  assert.match(content.agents.get('paacm-reviewer.md'), /project reviewer checklist/)
+  assert.match(content.agentsBlock, /PAACM 3, the Verified Single-Writer Loop/)
+})

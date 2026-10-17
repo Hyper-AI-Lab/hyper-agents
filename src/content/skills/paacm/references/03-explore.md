@@ -15,8 +15,14 @@
 
    The explorer returns pointers, not conclusions. Ask a follow-up question rather than accepting a vague summary.
 
+   The explorer starts from a fresh context and does not read project extensions. If `.agent/extensions/03-explore.md` names sources to search (a knowledge base, design documents) or conventions to report, put them in the request.
+
 3. **Read only the pointed-to ranges you need.** Do not open whole directories or large files end to end.
 4. **Check the pointers resolve.** Every file and function the plan will rely on must exist where the explorer said.
 5. Record what matters: `paacm task log "explore: <key pointers and commands>"`.
 
 **If `paacm-explorer` is not installed** (core layer), use the IDE's built-in exploration subagent (`Explore` in Claude Code, `explore` in Cursor) with the same request. If no subagent is available, search yourself with targeted searches and read only matching ranges.
+
+---
+
+**Project extensions:** if `.agent/extensions/03-explore.md` exists in the repository, read it now and follow it as part of this file. It may add steps, fields, reviewers and checks; it never removes or weakens a gate.

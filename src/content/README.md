@@ -20,6 +20,8 @@ Everything PAACM installs into a project or ships as a plugin is authored here o
 
 The project configuration's defaults (autonomy, gate tiers, retry cap, check timeout, protected paths) are defined once in `src/runtime/lib/config.mjs`: a project install writes them to `.agent/paacm.json`, and the runtime applies them wherever that file is missing or leaves a key out, as in a plugin install.
 
+Projects add their own rules per phase in `.agent/extensions/<reference>.md` (ALGORITHM.md section 15). The kit never writes those files: every reference in `skills/paacm/references/` must end with the line that tells the agent to read its extension, and the content test enforces it.
+
 The runtime in `src/runtime/` (the check runner, the protected-path audit, task state and the hook scripts) is copied into `skills/paacm/scripts/` for both targets, so hooks, the agent and the CLI run the same code. The generator also places a copy of `instructions/AGENTS.md` there as `core-rules.md`; the session-start hook injects it when the project's `AGENTS.md` has no PAACM block, which is the case for plugin installs.
 
 ## Rules for authors

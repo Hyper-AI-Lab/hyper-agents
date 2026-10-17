@@ -28,3 +28,7 @@ Your context window is a budget. Everything in it costs tokens on every turn and
 | Facts true for the whole repository: commands the agent cannot guess, non-default conventions, gotchas | `AGENTS.md`, outside the PAACM block, through a change the human reviews. Add a rule only after the same mistake has happened more than once, and keep the file under 200 lines |
 
 Never store secrets, tokens or personal data in any `.agent/` file or instruction file. Never rely on remembering an earlier session; read the task files.
+
+---
+
+**Project extensions:** if `.agent/extensions/context.md` exists in the repository, read it now and follow it as part of this file. It may add steps, fields, reviewers and checks; it never removes or weakens a gate.

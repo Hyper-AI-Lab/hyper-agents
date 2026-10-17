@@ -171,3 +171,17 @@ test('the runtime finds the project root from a subfolder, and check validates i
   assert.equal(runtime(dir, 'nonsense').code, 2)
   assert.ok(!existsSync(path.join(dir, 'src', 'deep', '.agent')))
 })
+
+test('review-input carries the project reviewer checklist from the review extension', async (t) => {
+  const dir = await project(t)
+  const id = `${today()}-chk`
+  runtime(dir, 'task', 'start', '--slug', 'chk', '--route', 'STANDARD', '--summary', 'x')
+  await writeFiles(dir, { 'src/a.js': 'export const a = 3\n' })
+  let text = await read(dir, runtime(dir, 'task', 'review-input').stdout.trim())
+  assert.doesNotMatch(text, /Project reviewer checklist/)
+  await writeFiles(dir, { '.agent/extensions/08-review.md': '# Review\r\n\r\nRun security-reviewer too.\r\n\r\n## Reviewer checklist\r\n\r\n- Every endpoint has an authorization test.\r\n- No real client data in fixtures.\r\n\r\n## Notes\r\n\r\nnot for the reviewer\r\n' })
+  text = await read(dir, runtime(dir, 'task', 'review-input').stdout.trim())
+  assert.match(text, /## Project reviewer checklist\n\nCheck each item against the diff as well, and report a violated item as a finding\.\n\n- Every endpoint has an authorization test\.\n- No real client data in fixtures\.\n\n## Diff/)
+  assert.doesNotMatch(text, /not for the reviewer/)
+  assert.match(text, new RegExp(`# Review input: ${id}`))
+})

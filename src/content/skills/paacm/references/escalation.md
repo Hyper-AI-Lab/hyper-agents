@@ -40,3 +40,7 @@ When the human answers, log the decision (`paacm task log "decision: …"`), set
 ## Restarting a polluted session
 
 After **two failed corrections of the same mistake**, stop editing. Record what you learned in `progress.md`, and continue in a fresh session that starts from `SPEC.md`, `PLAN.md` and `progress.md`. A long conversation full of failed attempts makes the next attempt worse, not better.
+
+---
+
+**Project extensions:** if `.agent/extensions/escalation.md` exists in the repository, read it now and follow it as part of this file. It may add steps, fields, reviewers and checks; it never removes or weakens a gate.

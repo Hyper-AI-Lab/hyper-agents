@@ -6,9 +6,11 @@ import { loadContent } from '../lib/content.mjs'
 import { validateAgent, validateClaudeHooks, validateCursorHooks, validateSkill } from '../lib/validate.mjs'
 import { blockBody } from '../runtime/lib/blocks.mjs'
 import { missingTiers, parseManifest } from '../runtime/lib/checks.mjs'
-import { validateConfig } from '../runtime/lib/config.mjs'
+import { loadConfig, validateConfig } from '../runtime/lib/config.mjs'
+import { EXTENSIONS_DIR, listExtensions } from '../runtime/lib/extensions.mjs'
 import { fromPosix, listFiles, readJsonOrNull, readTextOrNull, sha256 } from '../runtime/lib/fs.mjs'
 import { head, isRepo } from '../runtime/lib/git.mjs'
+import { matchesAny } from '../runtime/lib/glob.mjs'
 import { LOCK_PATH, readLock } from './install.mjs'
 
 // Installed as defaults and meant to be edited, so a change is not reported.
@@ -62,7 +64,26 @@ export async function doctor(args, io) {
       fail(`.agent/checks.conf: ${error.message}`)
     }
   }
+  if (config === null || validateConfig(config).length === 0) await checkExtensions(targetDir, { ok, warn })
   return finish(io, results)
+}
+
+// Project extensions: each must be named after a paacm reference (or the agent
+// never reads it), and each must be protected configuration (an install made
+// before 3.1 has an explicit protect.config list without .agent/extensions/**).
+async function checkExtensions(targetDir, { ok, warn }) {
+  const names = await listExtensions(targetDir)
+  if (names.length === 0) return
+  const content = await loadContent()
+  const references = new Set(
+    [...content.skills.get('paacm').keys()].filter((rel) => /^references\/[^/]+\.md$/.test(rel)).map((rel) => rel.slice('references/'.length, -3)),
+  )
+  const unknown = names.filter((n) => !references.has(n))
+  for (const n of unknown) warn(`${EXTENSIONS_DIR}/${n}.md matches no paacm reference, so the agent never reads it (names: ${[...references].sort().join(', ')})`)
+  const config = await loadConfig(targetDir)
+  const unprotected = names.filter((n) => !matchesAny(`${EXTENSIONS_DIR}/${n}.md`, config.protect.config))
+  if (unprotected.length) warn(`project extensions are not protected configuration: add "${EXTENSIONS_DIR}/**" to protect.config in .agent/paacm.json (${unprotected.join(', ')})`)
+  ok(`project extensions: ${names.join(', ')}`)
 }
 
 // The project install: installed files, blocks, settings entries, skills and

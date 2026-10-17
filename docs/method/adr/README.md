@@ -19,3 +19,4 @@ Each record states one design decision of PAACM 3.0, the evidence behind it, and
 | [0013](0013-evaluation.md) | Evaluation on a private, frozen task set |
 | [0014](0014-rejected-approaches.md) | Approaches the method rejects |
 | [0015](0015-node-cli.md) | A zero-dependency Node command-line tool replaces the shell scripts |
+| [0016](0016-project-extensions.md) | Projects extend the method per phase, never by removing a gate |

@@ -178,3 +178,17 @@ test('a hook that cannot read its input fails with a non-zero exit, which fail-c
   assert.notEqual(bad.status, 0)
   assert.match(bad.stderr, /PAACM hook error: hook input is not valid JSON/)
 })
+
+test('session start lists the project extensions for both IDEs, and protect guards them', async (t) => {
+  const dir = await project(t)
+  const none = hook('session-start', { hook_event_name: 'SessionStart', session_id: sessionId(), source: 'startup' }, { projectDir: dir })
+  assert.doesNotMatch(none.json.hookSpecificOutput.additionalContext, /Project extensions/)
+  await writeFiles(dir, { '.agent/extensions/01-intake-triage.md': '# Intake\n', '.agent/extensions/08-review.md': '# Review\n' })
+  const claude = hook('session-start', { hook_event_name: 'SessionStart', session_id: sessionId(), source: 'startup' }, { projectDir: dir })
+  assert.match(claude.json.hookSpecificOutput.additionalContext, /Project extensions in `\.agent\/extensions\/`: 01-intake-triage, 08-review\./)
+  const cur = hook('session-start', cursor(dir, { hook_event_name: 'sessionStart', conversation_id: sessionId() }))
+  assert.match(cur.json.additional_context, /Project extensions in `\.agent\/extensions\/`: 01-intake-triage, 08-review\./)
+  const edit = (event, extra) => hook('protect', { hook_event_name: event, tool_name: event === 'PreToolUse' ? 'Edit' : 'Write', tool_input: { file_path: path.join(dir, '.agent/extensions/08-review.md') }, ...extra }, { projectDir: dir })
+  assert.equal(edit('PreToolUse').json.hookSpecificOutput.permissionDecision, 'ask')
+  assert.equal(edit('preToolUse', { workspace_roots: [dir] }).json.permission, 'deny')
+})

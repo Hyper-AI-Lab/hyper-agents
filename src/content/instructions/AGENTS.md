@@ -1,6 +1,6 @@
 # PAACM: how agents work in this repository
 
-This repository uses **PAACM 3.0, the Verified Single-Writer Loop**. For every request that changes code, tests or configuration, follow the `paacm` skill: invoke `/paacm <request>`, or open `.claude/skills/paacm/SKILL.md` and follow it. Questions that change nothing are answered directly.
+This repository uses **PAACM 3, the Verified Single-Writer Loop**. For every request that changes code, tests or configuration, follow the `paacm` skill: invoke `/paacm <request>`, or open `.claude/skills/paacm/SKILL.md` and follow it. Questions that change nothing are answered directly.
 
 `paacm <command>` below means the PAACM runtime: `node .claude/skills/paacm/scripts/paacm.mjs <command>`, run from the repository root. When PAACM is installed as a plugin, the session-start message gives the runtime's exact path.
 
