@@ -144,3 +144,12 @@ npx github:Hyper-AI-Lab/hyper-agents doctor
 ## Autonomy L2 and L3 need a sandbox
 
 With `--autonomy L2` or `L3` and the power layer, Claude Code runs shell commands in its sandbox and refuses them if the sandbox is unavailable. On Linux and WSL2 the sandbox needs `bubblewrap` and `socat`; `doctor` checks for both. Native Windows has no Claude Code sandbox: use WSL2 or autonomy L1. In Cursor, choose the matching run mode yourself ([autonomy levels](using-paacm.md#choose-the-autonomy-level)).
+
+## Shared machines
+
+PAACM works the same on a server that several people use over SSH. The agent acts with the operating-system account it runs in, so set the machine up per person, not per project:
+
+- **One account per person.** The agent uses the account's Claude Code login and user settings (`~/.claude/`), its git author, its `gh` login and its cloud credentials. When people share an account, their commits and pull requests carry one identity, a rule that someone else must approve a pull request no longer means anything, and one person's user settings change everyone's sessions.
+- **One clone or worktree per person.** Task state lives in the working tree (`.agent/tasks/`), and `paacm task start` refuses while another task is active there. Two people in one working tree block each other's tasks and mix their changes.
+- **No long-lived cloud keys where agents run.** An agent can run any command its account can, within the permission rules, and deny rules for shell commands are not a security boundary. Keep deployment and administrator credentials in CI, for example GitHub Actions with OpenID Connect. Give agent accounts short-lived or read-only access, or none.
+- **Not as root.** Root can read every account's files and credentials, so an agent running as root can too. File permissions between ordinary accounts are what keep one person's projects and keys away from another person's agent.

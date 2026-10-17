@@ -7,6 +7,7 @@
   - The `## Reviewer checklist` section of `.agent/extensions/08-review.md` reaches the fresh-context reviewer through `review-input.md`.
   - An extension never removes or weakens a gate ([ALGORITHM.md section 15](docs/method/ALGORITHM.md#15-project-extensions), [ADR 0016](docs/method/adr/0016-project-extensions.md), [guide](docs/guide/extending.md)).
 - **Protection and health checks.** `.agent/extensions/**` is protected configuration by default. `paacm doctor` reports extensions whose name matches no reference and extensions an explicit protect list does not cover.
+- **Shared machines.** The setup guide explains how to run PAACM on a server several people use: one account and one clone per person, no long-lived cloud keys where agents run, and not as root ([setup guide](docs/guide/setup.md#shared-machines)).
 - **Upgrading from 3.0.** An untouched `.agent/paacm.json` is updated by `paacm upgrade`. If you changed it, add `".agent/extensions/**"` to `protect.config` yourself before adding extensions; `paacm doctor` reports when it is missing.
 
 ## 3.0.0 — The Verified Single-Writer Loop
