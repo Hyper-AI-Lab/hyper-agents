@@ -48,6 +48,7 @@ All method state lives under `.agent/` in the target repository. Tool configurat
 |---|---|---|---|
 | `.agent/paacm.json` | Project configuration: default autonomy level, protected paths, test patterns, retry cap, gate tier | Installer, then humans | Yes |
 | `.agent/checks.conf` | The check manifest: `tier\|label\|command` lines for the tiers `quick`, `full` and `security` | Humans (proposed by `paacm detect`) | Yes |
+| `.agent/extensions/<reference>.md` | The project's additions to one reference of the `paacm` skill (section 15) | Humans | Yes |
 | `.agent/tasks/CURRENT` | The identifier of the active task | Writer | No |
 | `.agent/tasks/<task-id>/state.json` | Machine-readable task state: route, autonomy level, status, approved-test baseline commit, consecutive gate failures | Writer and hooks | No |
 | `.agent/tasks/<task-id>/SPEC.md` | The specification (section 6, phase 2) | Writer; approved by the human | No (MAY be committed by team choice) |
@@ -359,3 +360,18 @@ The method is evaluated, and components are kept or removed, using a private, fr
 - With a task set of this size, only differences of roughly 15–20 percentage points are detectable; smaller observed differences are reported as inconclusive.
 
 `paacm eval` records runs and reports these metrics. Re-run the evaluation on every model upgrade, and remove a component when removing it does not lower the primary metric.
+
+## 15. Project extensions
+
+A project adapts the method to its own conventions without forking it. It does so through extension files, one per reference of the `paacm` skill: `.agent/extensions/<reference file name>`, for example `.agent/extensions/01-intake-triage.md`.
+
+- **Loading.** When the writer opens a reference, it MUST also read the extension of the same name if it exists, and follow it as part of that reference. Every reference ends with this reminder, and the session-start hook lists the extensions present.
+- **Subagents.**
+  - The `## Reviewer checklist` section of `.agent/extensions/08-review.md` is copied into `review-input.md` (`paacm task review-input`), and the reviewer checks each item.
+  - The writer puts the requirements of `.agent/extensions/03-explore.md` into the explorer's brief.
+  - Further reviewers an extension names receive the same review input.
+- **What an extension may do.** Add steps, fields, sources to read, reviewers and checks.
+- **What it MUST NOT do.** Remove or weaken a gate: human approvals (section 7), frozen tests (phase 5), the gate and its retry cap (phase 7), the escalation triggers (section 8), approval of consequential actions. Where an extension conflicts with a gate, the gate applies and the writer tells the human.
+- **Protection.** Extensions are protected configuration. The writer MUST NOT edit them during a task without the human's approval.
+
+Project-wide facts that apply in every session (build commands the agent cannot guess, non-default conventions) still belong in the always-on file. Extensions hold what applies in one phase.

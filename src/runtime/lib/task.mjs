@@ -4,6 +4,7 @@ import { appendFile, mkdir, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { readJsonOrNull, readTextOrNull, stableJson, writeFileAtomic } from './fs.mjs'
 import { changedSince, diffSince, head, shortSha, uncommittedPaths } from './git.mjs'
+import { readExtension, sectionOf } from './extensions.mjs'
 import { matchesAny } from './glob.mjs'
 
 export const TASKS_DIR = '.agent/tasks'
@@ -218,6 +219,7 @@ export async function writeReviewInput(projectDir) {
   const gate = state.lastGate
     ? `Latest gate: tier ${state.lastGate.tier}, ${state.lastGate.passed ? 'passed' : `failed (${state.lastGate.failed})`}, at ${shortSha(state.lastGate.head)}${state.lastGate.dirty ? ' with uncommitted changes' : ''}, ${state.lastGate.at}`
     : 'The gate has not been run for this task.'
+  const checklist = sectionOf(await readExtension(projectDir, '08-review'), 'Reviewer checklist')
   const text = [
     `# Review input: ${state.id}`,
     '',
@@ -235,6 +237,7 @@ export async function writeReviewInput(projectDir) {
     '',
     changed.length ? changed.map((p) => `- ${p}`).join('\n') : '(none)',
     '',
+    ...(checklist ? ['## Project reviewer checklist', '', 'Check each item against the diff as well, and report a violated item as a finding.', '', checklist, ''] : []),
     '## Diff',
     '',
     '```diff',

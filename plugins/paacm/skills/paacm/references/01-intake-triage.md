@@ -50,3 +50,7 @@ Proceed when the request plus the supporting data determine the solution. Otherw
 - **FAST:** if you do not know where the change goes, run phase 3; if no existing test covers it, run phase 5; otherwise go to phase 6.
 - **STANDARD:** phase 2 if the acceptance criteria are not explicit, otherwise phase 3.
 - **DEEP:** phase 2.
+
+---
+
+**Project extensions:** if `.agent/extensions/01-intake-triage.md` exists in the repository, read it now and follow it as part of this file. It may add steps, fields, reviewers and checks; it never removes or weakens a gate.

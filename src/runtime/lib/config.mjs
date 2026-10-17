@@ -40,6 +40,7 @@ export const DEFAULT_CONFIG = Object.freeze({
       '.agent/paacm.json',
       '.agent/checks.conf',
       '.agent/paacm.lock.json',
+      '.agent/extensions/**',
     ],
   },
   postEdit: [],

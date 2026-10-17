@@ -41,7 +41,12 @@
 |---|---|
 | `.agent/paacm.json` | Project configuration: default autonomy, gate tiers, retry cap, check timeout, protected-path patterns, post-edit commands |
 | `.agent/checks.conf` | The check manifest: `tier\|label\|command` per line |
+| `.agent/extensions/<reference>.md` | The project's additions to a reference of this skill (read with the reference; protected configuration) |
 | `.agent/tasks/CURRENT` | The current task's identifier |
 | `.agent/tasks/<task-id>/state.json` | Route, autonomy, status, `baseCommit`, `testsApprovedAt`, gate results, block details |
 | `.agent/tasks/<task-id>/progress.md` | The append-only log |
 | `.agent/tasks/<task-id>/SPEC.md`, `PLAN.md`, `REPORT.md`, `features.json`, `review-input.md`, `inputs/` | The task's working files |
+
+---
+
+**Project extensions:** if `.agent/extensions/runtime.md` exists in the repository, read it now and follow it as part of this file. It may add steps, fields, reviewers and checks; it never removes or weakens a gate.

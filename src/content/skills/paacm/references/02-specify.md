@@ -17,3 +17,7 @@
 6. **DEEP work:** recommend continuing in a fresh session that starts from `SPEC.md`, so implementation starts with a clean context.
 
 A good acceptance criterion names an observable behaviour and how to observe it: "Requests with a session idle for more than 30 minutes receive 401 (test `session_expiry.test.ts`)". A bad one is a wish: "Sessions should be secure."
+
+---
+
+**Project extensions:** if `.agent/extensions/02-specify.md` exists in the repository, read it now and follow it as part of this file. It may add steps, fields, reviewers and checks; it never removes or weakens a gate.

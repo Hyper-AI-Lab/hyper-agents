@@ -18,3 +18,7 @@
 3. **Uncommitted changes you did not make:** do not stash, reset or discard them. Ask the human whether they belong to the task.
 
 4. **A new request with no active task:** continue with phase 1. **A new request while a task is active:** ask whether to finish, block or set aside the active task before starting another; never mix two tasks in one working tree.
+
+---
+
+**Project extensions:** if `.agent/extensions/00-orient.md` exists in the repository, read it now and follow it as part of this file. It may add steps, fields, reviewers and checks; it never removes or weakens a gate.

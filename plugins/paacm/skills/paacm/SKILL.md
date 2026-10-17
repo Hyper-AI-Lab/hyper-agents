@@ -15,6 +15,7 @@ The request is the user's message that invoked this skill, plus any supporting d
 - When you enter a phase, open its reference file in `references/` (relative to this skill's folder) and follow it. Each file is short; read only the one you need now.
 - `paacm <command>` means the PAACM runtime, `node <this skill's folder>/scripts/paacm.mjs <command>`, run from the repository root. In a project install that is `node .claude/skills/paacm/scripts/paacm.mjs`. The session-start message also prints the exact command. `references/runtime.md` lists every command.
 - Templates for every file you write are in `references/templates/`.
+- **Project extensions.** A project can add its own rules to any reference in `.agent/extensions/<reference file name>`, for example `.agent/extensions/01-intake-triage.md`. Each reference ends with a reminder to open its extension, and the session-start message lists the extensions the project has. An extension adds steps, fields, reviewers and checks. It never removes or weakens a gate: human approvals, frozen tests, the gate, the escalation triggers, approval of consequential actions. If an extension conflicts with one of those, follow the gate and tell the human about the conflict.
 
 ## The phases
 

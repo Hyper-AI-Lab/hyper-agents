@@ -18,3 +18,7 @@
 5. **Pushing and pull requests:** push the branch or open a pull request only if the human asked for it or the autonomy level allows it (`autonomy.md`). The human decides the merge. Never merge your own change into a protected branch.
 
 For a FAST task, the report may be short, but it still lists the gate command and its exit code.
+
+---
+
+**Project extensions:** if `.agent/extensions/09-deliver.md` exists in the repository, read it now and follow it as part of this file. It may add steps, fields, reviewers and checks; it never removes or weakens a gate.

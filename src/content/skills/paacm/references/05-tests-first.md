@@ -21,3 +21,7 @@
 
 - Stop with `BLOCKED:` trigger 4 (`escalation.md`) and show the conflicting lines.
 - Only after the human explicitly approves the change in the conversation may it be made, by the human or by you, followed by a new `paacm task approve-tests`.
+
+---
+
+**Project extensions:** if `.agent/extensions/05-tests-first.md` exists in the repository, read it now and follow it as part of this file. It may add steps, fields, reviewers and checks; it never removes or weakens a gate.

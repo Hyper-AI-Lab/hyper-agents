@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.1.0 — Project extensions
+
+- **Project extensions.** A repository adds its own rules to any phase in `.agent/extensions/<reference file name>`, for example a knowledge base to read at intake, fields a spec must have, reviewers to run, or a learnings step at delivery. So an existing team workflow and PAACM run as one process.
+  - Every reference ends with the line that loads its extension, and the session-start message lists the extensions present.
+  - The `## Reviewer checklist` section of `.agent/extensions/08-review.md` reaches the fresh-context reviewer through `review-input.md`.
+  - An extension never removes or weakens a gate ([ALGORITHM.md section 15](docs/method/ALGORITHM.md#15-project-extensions), [ADR 0016](docs/method/adr/0016-project-extensions.md), [guide](docs/guide/extending.md)).
+- **Protection and health checks.** `.agent/extensions/**` is protected configuration by default. `paacm doctor` reports extensions whose name matches no reference and extensions an explicit protect list does not cover.
+- **Upgrading from 3.0.** An untouched `.agent/paacm.json` is updated by `paacm upgrade`. If you changed it, add `".agent/extensions/**"` to `protect.config` yourself before adding extensions; `paacm doctor` reports when it is missing.
+
 ## 3.0.0 — The Verified Single-Writer Loop
 
 The method is rebuilt from a study of current research, vendor guidance and tooling, and specified in `docs/method/ALGORITHM.md` with a decision record for each major choice.

@@ -31,7 +31,7 @@ test('init installs the core layer and records it; a second init refuses', async
   }
   assert.ok(!existsSync(path.join(dir, '.claude/settings.json')), 'the core layer installs no hooks')
   const l = await lock(dir)
-  assert.equal(l.version, '3.0.0')
+  assert.equal(l.version, JSON.parse(await readFile(path.join(ROOT, 'package.json'), 'utf8')).version)
   assert.deepEqual(l.options, { ides: ['claude', 'cursor'], layer: 'core', autonomy: 'L1' })
   assert.ok(l.files['.claude/skills/paacm/SKILL.md'].sha256)
   assert.match(await read(dir, 'CLAUDE.md'), /^@AGENTS\.md$/m)
@@ -199,4 +199,39 @@ test('--cursor-user installs, updates and removes the plugin in a local plugins 
   assert.equal(r.code, 1)
   assert.match(r.stderr, /is not the PAACM plugin/)
   assert.equal(await read(plugins, 'paacm/x.txt'), 'someone else')
+})
+
+test('the installer leaves project extensions alone, and upgrading a 3.0 install protects them', async (t) => {
+  const ext = { '.agent/extensions/01-intake-triage.md': '# Intake: project additions\n' }
+  const dir = await repo(t, { files: ext })
+  assert.equal(cli(dir, 'init').code, 0)
+  assert.equal(await read(dir, '.agent/extensions/01-intake-triage.md'), ext['.agent/extensions/01-intake-triage.md'])
+  assert.ok(!Object.keys((await lock(dir)).files).some((p) => p.startsWith('.agent/extensions/')), 'extensions are never recorded as installed files')
+  assert.ok(JSON.parse(await read(dir, '.agent/paacm.json')).protect.config.includes('.agent/extensions/**'))
+
+  // Simulate an untouched 3.0 install: its paacm.json lacked the pattern and the lock hashed that file.
+  const { sha256 } = await import('../src/runtime/lib/fs.mjs')
+  const old = JSON.parse(await read(dir, '.agent/paacm.json'))
+  old.protect.config = old.protect.config.filter((p) => p !== '.agent/extensions/**')
+  const oldText = `${JSON.stringify(old, null, 2)}\n`
+  await writeFile(path.join(dir, '.agent/paacm.json'), oldText)
+  const l = await lock(dir)
+  l.version = '3.0.0'
+  l.files['.agent/paacm.json'] = { sha256: sha256(oldText) }
+  await writeFile(path.join(dir, '.agent/paacm.lock.json'), JSON.stringify(l))
+  const up = cli(dir, 'upgrade')
+  assert.equal(up.code, 0, up.out)
+  assert.match(up.stdout, /UPDATE {7}\.agent\/paacm\.json/)
+  assert.ok(JSON.parse(await read(dir, '.agent/paacm.json')).protect.config.includes('.agent/extensions/**'))
+
+  // A paacm.json the user changed is kept, and doctor points at the missing pattern.
+  const edited = JSON.parse(await read(dir, '.agent/paacm.json'))
+  edited.protect.config = edited.protect.config.filter((p) => p !== '.agent/extensions/**')
+  edited.autonomy = 'L2'
+  await writeFile(path.join(dir, '.agent/paacm.json'), `${JSON.stringify(edited, null, 2)}\n`)
+  assert.match(cli(dir, 'upgrade').stdout, /KEEP {9}\.agent\/paacm\.json/)
+  assert.match(cli(dir, 'doctor').stdout, /project extensions are not protected configuration/)
+
+  assert.equal(cli(dir, 'uninstall').code, 0)
+  assert.equal(await read(dir, '.agent/extensions/01-intake-triage.md'), ext['.agent/extensions/01-intake-triage.md'], 'uninstall keeps project extensions')
 })

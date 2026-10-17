@@ -53,3 +53,7 @@ Agents never share a working tree, and there are no swarms, peer teams or votes.
 3. Give the survivors' diffs to `paacm-reviewer` to choose.
 
 The selection must not rest only on tests the attempts could see.
+
+---
+
+**Project extensions:** if `.agent/extensions/delegation.md` exists in the repository, read it now and follow it as part of this file. It may add steps, fields, reviewers and checks; it never removes or weakens a gate.

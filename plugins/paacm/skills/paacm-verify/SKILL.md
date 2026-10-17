@@ -9,6 +9,8 @@ Claims about a change count only when a command the harness ran proves them. Thi
 
 `paacm <command>` means `node .claude/skills/paacm/scripts/paacm.mjs <command>` from the repository root (or the runtime command printed at session start when PAACM is a plugin).
 
+If `.agent/extensions/07-verify.md` exists, read it first and follow it together with these steps. It may add checks; it never removes one.
+
 1. **Run the gate:** `paacm gate`. It audits protected paths and runs the check tier for the current task's route. Without a current task it runs the `quick` tier. Add `--tier full` before delivering STANDARD work, and `--tier security` for security-relevant changes.
 2. **Read the exit code:**
    - **0:** passed.

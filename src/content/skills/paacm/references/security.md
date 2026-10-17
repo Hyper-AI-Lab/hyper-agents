@@ -39,3 +39,7 @@ The shell guard blocks the most dangerous of these patterns. It is a backstop, n
 ## Dependencies
 
 Add a dependency only if the plan names it. Check that it exists in its registry under the exact name, because agents invent plausible package names. Prefer the repository's existing libraries.
+
+---
+
+**Project extensions:** if `.agent/extensions/security.md` exists in the repository, read it now and follow it as part of this file. It may add steps, fields, reviewers and checks; it never removes or weakens a gate.

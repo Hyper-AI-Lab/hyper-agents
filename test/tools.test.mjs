@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
-import { rm, writeFile } from 'node:fs/promises'
+import { readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { test } from 'node:test'
 import { detectChecks } from '../src/cli/detect.mjs'
 import { main } from '../src/cli/main.mjs'
-import { captureIo, cli, read, repo, tempDir, writeFiles } from './helpers.mjs'
+import { captureIo, cli, read, repo, ROOT, tempDir, writeFiles } from './helpers.mjs'
 
 const labels = (r) => r.proposals.map((p) => `${p.tier}|${p.label}|${p.command}`)
 
@@ -108,7 +108,7 @@ test('the dispatcher: help, version, unknown commands and bad options', async ()
   const help = await run('help')
   assert.equal(help.code, 0)
   for (const command of ['init', 'upgrade', 'uninstall', 'doctor', 'detect', 'check', 'eval']) assert.match(help.text, new RegExp(`^  ${command} `, 'm'))
-  assert.equal((await run('--version')).text, '3.0.0')
+  assert.equal((await run('--version')).text, JSON.parse(await readFile(path.join(ROOT, 'package.json'), 'utf8')).version)
   const unknown = await run('deploy')
   assert.equal(unknown.code, 2)
   assert.match(unknown.text, /unknown command "deploy"/)
@@ -118,4 +118,15 @@ test('the dispatcher: help, version, unknown commands and bad options', async ()
   const initHelp = await run('init', '--help')
   assert.equal(initHelp.code, 0)
   assert.match(initHelp.text, /--autonomy <L0\|L1\|L2\|L3>/)
+})
+
+test('doctor lists project extensions and warns about unknown names and missing protection', async (t) => {
+  const dir = await repo(t, { files: { '.agent/checks.conf': 'quick|unit|npm test\nfull|build|npm run build\n', '.agent/extensions/01-intake-triage.md': '# x\n', '.agent/extensions/intake.md': '# x\n' } })
+  const r = cli(dir, 'doctor')
+  assert.equal(r.code, 0, r.out)
+  assert.match(r.stdout, /! \.agent\/extensions\/intake\.md matches no paacm reference, so the agent never reads it/)
+  assert.match(r.stdout, /✓ project extensions: 01-intake-triage, intake/)
+  assert.doesNotMatch(r.stdout, /not protected configuration/, 'the defaults protect extensions')
+  await writeFiles(dir, { '.agent/paacm.json': JSON.stringify({ protect: { config: ['.claude/**'] } }) })
+  assert.match(cli(dir, 'doctor').stdout, /! project extensions are not protected configuration: add "\.agent\/extensions\/\*\*" to protect\.config/)
 })

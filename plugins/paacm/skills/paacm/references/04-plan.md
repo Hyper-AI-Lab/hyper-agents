@@ -16,3 +16,7 @@
 5. **Before starting each plan task, re-read `PLAN.md`.**
 
 A bad plan is worse than no plan. When evidence shows the plan is wrong, stop, revise `PLAN.md`, log why, and get the revision approved at L0–L2. Never silently deviate from the approved plan; an edit outside the plan's files is escalation trigger 6.
+
+---
+
+**Project extensions:** if `.agent/extensions/04-plan.md` exists in the repository, read it now and follow it as part of this file. It may add steps, fields, reviewers and checks; it never removes or weakens a gate.

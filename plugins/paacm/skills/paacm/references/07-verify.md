@@ -28,3 +28,7 @@
 **The retry cap.** The gate counts consecutive failures. After **three** consecutive failures of the same check, stop and escalate with trigger 5 instead of trying again. More attempts against the same visible tests make an agent more likely to game them, not to fix the problem.
 
 Never weaken a check, edit a protected file, or claim a pass the gate did not report. If a check cannot run (a missing tool, a missing service), record the exact reason and the risk it leaves under CHECKS NOT RUN.
+
+---
+
+**Project extensions:** if `.agent/extensions/07-verify.md` exists in the repository, read it now and follow it as part of this file. It may add steps, fields, reviewers and checks; it never removes or weakens a gate.

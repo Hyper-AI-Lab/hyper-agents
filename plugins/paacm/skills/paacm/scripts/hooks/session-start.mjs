@@ -8,6 +8,7 @@ import { hasBlock } from '../lib/blocks.mjs'
 import { readTextOrNull } from '../lib/fs.mjs'
 import { branch, isRepo, recentCommits, shortSha, statusShort } from '../lib/git.mjs'
 import { contextResponse, detectTool, projectDirFrom, readHookInput, runHook, toProjectPath } from '../lib/hookio.mjs'
+import { listExtensions } from '../lib/extensions.mjs'
 import { recordBaseline, sessionIdFrom } from '../lib/session.mjs'
 import { currentTask, readPlanHead, readProgressTail } from '../lib/task.mjs'
 
@@ -40,6 +41,11 @@ runHook(async () => {
     if (commits) out.push('', 'Recent commits:', `\n\`\`\`\n${commits}\n\`\`\``)
   } else {
     out.push('', 'This folder is not a git repository. PAACM needs git for task baselines, the audit and per-task commits; ask the human before starting a coding task.')
+  }
+
+  const extensions = await listExtensions(projectDir)
+  if (extensions.length) {
+    out.push('', `Project extensions in \`.agent/extensions/\`: ${extensions.join(', ')}. Read each one together with the paacm reference of the same name.`)
   }
 
   const task = await currentTask(projectDir)

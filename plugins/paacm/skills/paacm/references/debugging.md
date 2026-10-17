@@ -16,3 +16,7 @@ Use this procedure inside phases 3–6 when something is broken and the cause is
 8. **Report the root cause** with its evidence. If the root cause is still uncertain, say so in RISKS AND UNKNOWNS.
 
 Never cycle through guesses without new evidence. Two failed fixes for the same symptom mean the diagnosis is wrong: go back to step 3, or restart in a fresh session (`escalation.md`).
+
+---
+
+**Project extensions:** if `.agent/extensions/debugging.md` exists in the repository, read it now and follow it as part of this file. It may add steps, fields, reviewers and checks; it never removes or weakens a gate.
