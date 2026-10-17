@@ -3,7 +3,8 @@
 **When:** route DEEP, or STANDARD when the acceptance criteria are not already explicit.
 
 1. `paacm task phase specifying`
-2. **Interview the human one question at a time.** Skip anything the request or the supporting data already answers. Ask about behaviour, constraints and edge cases, not about implementation details you can decide yourself. Stop when the answers would no longer change the solution.
+2. **Interview the human in rounds.** Each round asks every open question that does not depend on the answer to another open question (in Claude Code, `AskUserQuestion` takes up to four). Number them, give your recommended answer with each, and word each so that "yes" accepts it. When an answer opens new questions, ask them in the next round. Skip anything the request or the supporting data already answers, and find facts yourself in the code, the documents or with the explorer; ask the human only for decisions. Ask about behaviour, constraints and edge cases, not about implementation details you can decide yourself. Stop when the answers would no longer change the solution.
+   - **Check the terms.** If the project has a glossary (for example `GLOSSARY.md` or `docs/CONTEXT.md`), compare the request's terms with it. When a term means something else there, or the glossary splits it into several meanings, ask which one is meant, and use the glossary's term in `SPEC.md`.
 3. **Write `.agent/tasks/<task-id>/SPEC.md`** from `templates/SPEC.md`. It has exactly seven parts:
    1. Goal
    2. Context sources (files with line ranges, documents, screenshots, reference repositories with their commit)

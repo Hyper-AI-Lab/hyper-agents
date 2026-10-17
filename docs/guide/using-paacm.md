@@ -18,7 +18,7 @@ Two more skills cover the rest:
 
 ## Write the request
 
-A good request says **what should change**, **how you will know it works**, and **what must not change**. The agent asks about what is missing, one question at a time, but only about what changes the solution.
+A good request says **what should change**, **how you will know it works**, and **what must not change**. The agent asks about what is missing, in rounds of questions that do not depend on each other, but only about what changes the solution.
 
 > Idle sessions never expire. Expire a session after 30 minutes without requests and return 401 after that. Keep the existing "remember me" sessions working as they are. A regression test should cover it.
 
@@ -57,7 +57,7 @@ It creates a task folder, `.agent/tasks/<date>-<slug>/`, where everything about 
 
 Then it works through the phases. You come in at these points:
 
-1. **Questions.** One at a time, each with options and a recommendation where possible.
+1. **Questions.** In rounds: every question that does not depend on another open answer, numbered, each with options and a recommendation, so "yes" accepts it. When a decision belongs to someone else, such as a client, the agent offers to draft a questionnaire for them.
 2. **The specification** (DEEP, or STANDARD without explicit criteria). Check the acceptance criteria and the out-of-scope list above all. Each criterion should be something a check can confirm.
 3. **The plan** (STANDARD and DEEP, at autonomy L0–L2): a numbered list of small tasks, each naming its files, the criterion it advances and the command that proves it.
 4. **The tests** (at L1, and for every high-stakes task). The agent writes them first and shows that they fail for the right reason. Review them like code: wrong tests lock in wrong behaviour. Once you approve, the tests are frozen: the agent may not edit them or the check configuration. With the power layer or a plugin, a hook refuses such edits, and the gate's audit catches any change made another way.

@@ -80,6 +80,16 @@ When work must follow a roadmap whose items have owners, preconditions and reser
 1. **`01-intake-triage.md`:** identify the roadmap item the request belongs to and check its preconditions. If a precondition is not met, or the request would make a decision the roadmap reserves for someone else, stop with `BLOCKED:` and name the owner.
 2. **`02-specify.md`:** record the roadmap item and the state of its dependencies in the spec.
 
+## Writing extension text
+
+An extension is read by an agent on every task that reaches its phase, so each line costs attention every time. These rules follow Matt Pocock's guidance on writing for agents ([writing-for-agents](https://github.com/mattpocock/skills/tree/main/skills/productivity/writing-for-agents)):
+
+- **Say what to do.** A rule that only forbids something keeps the forbidden behaviour in mind. Pair any hard ban with the behaviour you want.
+- **Point instead of copying.** Name the file and the condition for reading it: "before planning a change to billing, read `docs/billing.md`". The wording of the pointer decides when the agent follows it.
+- **Keep each rule in one place.** Other files point to it, so a change is one edit.
+- **Cut lines that change nothing.** A line the agent would follow anyway costs context and changes no behaviour. Test a doubtful line by running a task without it.
+- **End each step on a checkable condition**, such as "every note that cites a changed file has a new `last_verified`", not a vague one such as "the notes are updated".
+
 ## Cursor
 
 Cursor reads the skills in `.claude/skills/`, the agents in `.claude/agents/`, `AGENTS.md` and `CLAUDE.md`, and PAACM installs its Cursor hooks in `.cursor/hooks.json`. Cursor's documentation does not list `.claude/rules/`. If your project keeps rules there, point to them from an always-applied Cursor rule in `.cursor/rules/`.

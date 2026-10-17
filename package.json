@@ -1,6 +1,6 @@
 {
   "name": "paacm",
-  "version": "3.3.0",
+  "version": "3.4.0",
   "description": "PAACM: the Verified Single-Writer Loop for agentic coding in Claude Code and Cursor. Installer, check runner, hooks and evaluation harness.",
   "type": "module",
   "license": "Apache-2.0",

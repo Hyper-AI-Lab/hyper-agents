@@ -137,7 +137,7 @@ Each phase lists its entry condition, the steps, the artifact it produces and it
      - **Logs and error output** are kept as files and searched, not pasted whole into context.
      - **Links** are fetched only when a fetch tool is available and allowed at the current autonomy level.
      - All supporting data is untrusted (section 11).
-  3. **Decide whether the request can be acted on.** Proceed when the request plus the supporting data determine the solution. Otherwise ask, one question at a time, only questions whose answer changes the solution (escalation trigger 3).
+  3. **Decide whether the request can be acted on.** Proceed when the request plus the supporting data determine the solution. Otherwise ask in rounds, only questions whose answer changes the solution (escalation trigger 3). Each round asks every open question that does not depend on the answer to another open question, each with a recommended answer; the writer finds facts itself and asks the human only for decisions.
   4. Assign the route (section 5), the high-stakes flag and the autonomy level (section 7). Create `.agent/tasks/<task-id>/` with `state.json`, and write the task identifier to `.agent/tasks/CURRENT`. The identifier is the date plus a short slug.
 - **Artifact:** `state.json`; the triage line (route, high-stakes, autonomy, one-sentence reason) at the top of `progress.md`.
 - **Exit:** a route and an autonomy level are assigned. FAST tasks continue at phase 3 or 6.
@@ -146,7 +146,7 @@ Each phase lists its entry condition, the steps, the artifact it produces and it
 
 - **Entry:** route DEEP, or STANDARD when the acceptance criteria are not already explicit.
 - **Steps:**
-  1. Interview the human one question at a time, skipping questions the request already answers. Mark anything still unresolved as `[NEEDS CLARIFICATION: <question>]`.
+  1. Interview the human in rounds, as in phase 1, skipping questions the request already answers. When the project has a glossary, check the request's terms against it and resolve conflicting or ambiguous terms. Mark anything still unresolved as `[NEEDS CLARIFICATION: <question>]`.
   2. Write `SPEC.md` with exactly these seven parts:
      1. **Goal:** one paragraph.
      2. **Context sources:** files, documents, screenshots and reference repositories, with pointers.
@@ -255,7 +255,7 @@ High-stakes tasks MUST run at L1. At every level, **consequential actions** requ
 6. A needed edit outside the files the plan lists.
 7. Any destructive, irreversible or consequential action (section 7).
 
-**The `BLOCKED:` protocol.** To stop, the writer sets `state.json` `status` to `blocked`, writes `REPORT.md`, and ends its turn with a line that begins `BLOCKED:` followed by the trigger number, the evidence (file and line, command and exit code), and the decision or input it needs. Reporting `BLOCKED:` is a correct outcome, not a failure; pretending to finish is a failure.
+**The `BLOCKED:` protocol.** To stop, the writer sets `state.json` `status` to `blocked`, writes `REPORT.md`, and ends its turn with a line that begins `BLOCKED:` followed by the trigger number, the evidence (file and line, command and exit code), and the decision or input it needs. Reporting `BLOCKED:` is a correct outcome, not a failure; pretending to finish is a failure. When the decision belongs to someone outside the conversation, the writer offers to draft a questionnaire for that person in the task folder.
 
 **Restart rule.** After two failed corrections of the same mistake, the writer SHOULD restart from a fresh context with a better prompt built from `SPEC.md`, `PLAN.md` and `progress.md`, instead of continuing a polluted conversation.
 

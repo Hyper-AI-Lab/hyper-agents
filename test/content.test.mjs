@@ -137,6 +137,17 @@ test('the error-handling reviewer is read-only and both review paths run it on e
   assert.match(content.skills.get('paacm-review').get('SKILL.md'), /also delegate to `paacm-silent-failure-hunter` with the same file/)
 })
 
+test('intake and specification ask in rounds, escalation offers a questionnaire, and debugging starts from a red loop', () => {
+  const ref = (name) => content.skills.get('paacm').get(`references/${name}`)
+  for (const name of ['01-intake-triage.md', '02-specify.md']) {
+    assert.match(ref(name), /in rounds/, name)
+    assert.doesNotMatch(ref(name), /one question at a time/, name)
+  }
+  assert.match(ref('02-specify.md'), /\*\*Check the terms\.\*\*/)
+  assert.match(ref('escalation.md'), /## When someone else must decide[\s\S]*questionnaire-<slug>\.md/)
+  assert.match(ref('debugging.md'), /\*\*Build a loop that goes red\.\*\*[\s\S]*\*\*Rank three to five falsifiable hypotheses\*\*/)
+})
+
 test('the skills explain project extensions, and verify and review read theirs', () => {
   const skill = content.skills.get('paacm').get('SKILL.md')
   assert.match(skill, /\*\*Project extensions\.\*\*[^\n]*`\.agent\/extensions\/<reference file name>`[^\n]*never removes or weakens a gate/)

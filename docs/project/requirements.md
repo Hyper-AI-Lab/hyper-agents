@@ -156,3 +156,11 @@ Release 3.3.0 adds an error-handling reviewer and uses Anthropic's official secu
 Evidence (`npm test`, 89 tests):
 
 - `test/content.test.mjs`: the new reviewer is read-only, carries its licence notice, and both review paths (phase 8 and the `paacm-review` skill) run it on error-handling changes; the plugin ships four valid agents.
+
+## Release 3.4.0
+
+Release 3.4.0 sharpens intake, escalation and debugging with practices from Matt Pocock's skills (R2, R3, R5). Questions come in rounds of independent questions with recommendations, a decision owned by someone outside the conversation gets a questionnaire, and debugging starts from a fast, deterministic command that fails on the symptom ([ADR 0020](../method/adr/0020-question-rounds-questionnaires-and-loop-first-debugging.md)).
+
+Evidence (`npm test`, 90 tests):
+
+- `test/content.test.mjs`: intake and specification ask in rounds and no longer one question at a time; specification checks terms against a glossary; escalation offers a questionnaire in the task folder; debugging builds a red loop before ranking hypotheses.
