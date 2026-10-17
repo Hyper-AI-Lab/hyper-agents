@@ -43,6 +43,24 @@ export const SHELL_RULES = [
     reason: 'rewrites agent settings, hooks, permissions or MCP configuration through the shell',
   },
   {
+    decision: 'deny',
+    id: 'rewrite-gate-config',
+    pattern: /(?:>|\btee\b|\bcp\b|\bmv\b|\bln\b|\bsed\s+-i)[^\n;&|]*\.agent[\\/](?:checks\.conf|paacm(?:\.lock)?\.json|extensions[\\/]|tasks[\\/](?:CURRENT\b|[^\s;&|]*state\.json))/,
+    reason: "rewrites PAACM's gate configuration, a project extension or the task state through the shell; use the paacm task commands, or ask the human",
+  },
+  {
+    decision: 'ask',
+    id: 'reopen-tests',
+    pattern: /\btask\s+reopen-tests\b/,
+    reason: 'reopens the approved tests for editing; it is allowed only after the human approved this specific test change in the conversation',
+  },
+  {
+    decision: 'ask',
+    id: 'hide-changes',
+    pattern: /\bgit\b[^\n;&|]*\bupdate-index\b[^\n;&|]*--(?:assume-unchanged|skip-worktree)\b/,
+    reason: "hides a file's changes from git, and so from PAACM's protected-path audit",
+  },
+  {
     decision: 'ask',
     id: 'git-push',
     pattern: /\bgit\b[^\n;&|]*\bpush\b/,

@@ -2,6 +2,8 @@
 
 `paacm <command>` means `node <runtime>/paacm.mjs <command>`, run from the repository root. In a project install, `<runtime>` is `.claude/skills/paacm/scripts`; when PAACM is a plugin, the session-start message prints the full command. The runtime needs Node.js 20 or later and has no other dependencies.
 
+Write each runtime command out in full, one per call. A command joined to others with `;` or `&&`, or called through a shell variable, does not match the IDE's allow rule and is refused. `paacm check` and `paacm gate` end with a line `paacm <command>: exit <code>` that you can quote as evidence.
+
 ## Task commands
 
 | Command | Effect |
@@ -11,6 +13,7 @@
 | `paacm task phase <phase>` | Sets the status to one of `specifying`, `exploring`, `planning`, `testing`, `implementing`, `verifying`, `reviewing`, and logs the change. |
 | `paacm task log "<text>"` | Appends a timestamped line to `progress.md`. |
 | `paacm task approve-tests` | Records the current commit as `testsApprovedAt`. Refuses while protected test files have uncommitted changes. From now on the protect hook and the audit treat test files as read-only. |
+| `paacm task reopen-tests --reason "<text>"` | Clears `testsApprovedAt` and returns the task to `testing`, so that a test change the human approved in the conversation can be made. The shell guard asks the human to confirm it. Run `approve-tests` again after committing the change. |
 | `paacm task review-input` | Writes `review-input.md` (diff since `baseCommit`, acceptance criteria, latest gate result) for `paacm-reviewer`, and prints its path. |
 | `paacm task block --trigger <1-7> --reason "<text>"` | Sets the status to `blocked`, records the trigger and reason, and clears the current-task pointer. |
 | `paacm task done` | Sets the status to `done` and clears the current-task pointer. Refuses unless the latest gate passed at the current commit and no tracked file has changed since. |
@@ -22,7 +25,7 @@
 |---|---|
 | `paacm check --list` | Prints the configured checks. |
 | `paacm check --tier <quick\|full\|security> [--json]` | Validates the whole manifest first, then runs the checks of the tier and the tiers below it, each with standard input closed, prints PASS or FAIL per check with its duration, and stops at the first failure. |
-| `paacm audit [--json]` | Lists protected paths changed since the task's baseline: test files since `testsApprovedAt`, and configuration files since `baseCommit`, including uncommitted changes. |
+| `paacm audit [--json]` | Lists protected paths changed since the task's baseline. Violations: test files, `.agent/checks.conf` and `.agent/paacm.json` changed since `testsApprovedAt`. Warnings: other configuration files changed since `baseCommit`. Both include uncommitted changes. |
 | `paacm gate [--tier <tier>] [--json]` | Runs the audit, then the checks for the route's tier (or the given tier); records the result and the consecutive-failure count in `state.json`. |
 
 ## Exit codes

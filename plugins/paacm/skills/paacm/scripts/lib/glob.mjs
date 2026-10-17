@@ -7,8 +7,9 @@
 
 const cache = new Map()
 
-export function globToRegExp(pattern) {
-  if (cache.has(pattern)) return cache.get(pattern)
+export function globToRegExp(pattern, { ignoreCase = false } = {}) {
+  const key = `${ignoreCase ? 'i' : 's'}:${pattern}`
+  if (cache.has(key)) return cache.get(key)
   let p = pattern.trim().replace(/^\.\//, '')
   if (!p.includes('/')) p = `**/${p}`
   let re = ''
@@ -42,8 +43,8 @@ export function globToRegExp(pattern) {
       re += escapeLiteral(c)
     }
   }
-  const compiled = new RegExp(`^${re}$`)
-  cache.set(pattern, compiled)
+  const compiled = new RegExp(`^${re}$`, ignoreCase ? 'i' : '')
+  cache.set(key, compiled)
   return compiled
 }
 
@@ -51,7 +52,11 @@ function escapeLiteral(s) {
   return s.replace(/[.+^${}()|[\]\\]/g, '\\$&')
 }
 
-export function matchesAny(path, patterns) {
+// Pass ignoreCase on file systems that ignore case (macOS and Windows by default),
+// where Tests/A.TEST.js and tests/a.test.js are the same file.
+export function matchesAny(path, patterns, { ignoreCase = false } = {}) {
   const p = path.replace(/\\/g, '/').replace(/^\.\//, '')
-  return patterns.some((g) => globToRegExp(g).test(p))
+  return patterns.some((g) => globToRegExp(g, { ignoreCase }).test(p))
 }
+
+export const CASE_INSENSITIVE_FS = process.platform === 'darwin' || process.platform === 'win32'

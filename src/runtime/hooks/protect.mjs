@@ -4,7 +4,7 @@
 // edit is blocked.
 import { loadConfig } from '../lib/config.mjs'
 import { shortSha } from '../lib/git.mjs'
-import { matchesAny } from '../lib/glob.mjs'
+import { CASE_INSENSITIVE_FS, matchesAny } from '../lib/glob.mjs'
 import { claudePreTool, cursorPermission, detectTool, editTarget, projectDirFrom, readHookInput, runHook, toProjectPath } from '../lib/hookio.mjs'
 import { currentTask } from '../lib/task.mjs'
 
@@ -16,19 +16,28 @@ runHook(async () => {
     if (tool === 'cursor') cursorPermission('allow')
   }
 
+  const deny = (reason) => (tool === 'claude' ? claudePreTool('deny', reason) : cursorPermission('deny', reason))
   const target = editTarget(input.tool_input)
-  const rel = target ? toProjectPath(projectDir, target) : null
-  if (!rel || rel === '.agent/tasks' || rel.startsWith('.agent/tasks/')) return allow()
+  if (!target) {
+    return deny('PAACM: the protect hook could not find the file this edit targets in the tool call, so it cannot check it against the protected paths. Report this to the human; the edit is refused until the hook recognises the tool.')
+  }
+  const rel = toProjectPath(projectDir, target)
+  if (!rel) return allow()
+  const opts = { ignoreCase: CASE_INSENSITIVE_FS }
+  if (matchesAny(rel, ['.agent/tasks/CURRENT', '.agent/tasks/*/state.json'], opts)) {
+    return deny(`PAACM: ${rel} is task state, written only by the paacm runtime. Change it with the paacm task commands (phase, approve-tests, block, done, resume).`)
+  }
+  if (matchesAny(rel, ['.agent/tasks', '.agent/tasks/**'], opts)) return allow()
 
   const config = await loadConfig(projectDir)
   const task = await currentTask(projectDir)
 
-  if (task && task.testsApprovedAt && matchesAny(rel, config.protect.tests)) {
+  if (task && task.testsApprovedAt && matchesAny(rel, config.protect.tests, opts)) {
     const reason = `PAACM: ${rel} is a test file, and the tests were approved at ${shortSha(task.testsApprovedAt)}. Tests are read-only during implementation. If this test is wrong or contradicts the specification, stop with BLOCKED: trigger 4 and show the conflicting lines.`
-    return tool === 'claude' ? claudePreTool('deny', reason) : cursorPermission('deny', reason)
+    return deny(reason)
   }
 
-  if (matchesAny(rel, config.protect.config)) {
+  if (matchesAny(rel, config.protect.config, opts)) {
     const reason = `PAACM: ${rel} is executable configuration (agent settings, hooks, CI, or the check manifest). Change it only if the human explicitly asked for this specific change.`
     if (tool === 'claude') return claudePreTool('ask', reason)
     return cursorPermission('deny', `${reason} Ask the human in the conversation; they can make the edit, or remove the pattern from protect.config in .agent/paacm.json for the duration of the change.`)

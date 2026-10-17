@@ -30,7 +30,7 @@ A user's explicit request for one specific action authorizes that action, within
 | L0 | `plan` permission mode | Plan or Ask mode |
 | L1 | `default` mode; edits ask for approval | Allowlist run mode |
 | L2 | `acceptEdits` mode with the sandbox enabled | Auto-review run mode with the sandbox |
-| L3 | Headless `claude -p` with an explicit tool allowlist, in a worktree or container | Cloud agents, or headless `agent -p` in a VM |
+| L3 | Headless `claude -p` with an explicit tool allowlist (`--allowedTools`; project allow rules apply only in a trusted folder), in a worktree or container | Cloud agents, or headless `agent -p` in a VM |
 
 With the power layer, `paacm init --autonomy <level>` writes the matching permission rules for Claude Code (`.claude/settings.json`) and the terminal allowlist for Cursor (`.cursor/permissions.json`). The IDE's own mode switch still applies on top. Never use bypass modes (such as `--dangerously-skip-permissions` or "Run Everything") on a workstation.
 

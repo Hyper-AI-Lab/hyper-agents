@@ -1,6 +1,7 @@
 // Hook input and output for both IDEs. Claude Code and Cursor both send one JSON
 // object on standard input and read one JSON object from standard output; they
 // differ in event names (PascalCase vs camelCase) and in the response fields.
+import { realpathSync } from 'node:fs'
 import path from 'node:path'
 
 export async function readHookInput({ timeoutMs = 5000 } = {}) {
@@ -40,13 +41,32 @@ export function projectDirFrom(input) {
   return path.resolve(candidates.find((c) => typeof c === 'string' && c !== ''))
 }
 
+// The real path of the longest existing prefix of an absolute path, with the rest
+// appended: symbolic links are resolved even for a file that does not exist yet.
+function realPath(abs) {
+  const rest = []
+  let current = abs
+  for (;;) {
+    try {
+      return path.join(realpathSync.native(current), ...rest)
+    } catch {
+      const parent = path.dirname(current)
+      if (parent === current) return abs
+      rest.unshift(path.basename(current))
+      current = parent
+    }
+  }
+}
+
 // Converts an absolute or relative path from a tool call into a repository-relative
-// POSIX path, or null when it lies outside the project.
+// POSIX path, or null when it lies outside the project. Symbolic links are
+// resolved first, so a link cannot hide which file an edit really changes.
 export function toProjectPath(projectDir, filePath) {
   if (typeof filePath !== 'string' || filePath === '') return null
-  const abs = path.resolve(projectDir, filePath)
-  const rel = path.relative(projectDir, abs)
-  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) return null
+  const root = realPath(path.resolve(projectDir))
+  const abs = realPath(path.resolve(projectDir, filePath))
+  const rel = path.relative(root, abs)
+  if (rel === '' || rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) return null
   return rel.split(path.sep).join('/')
 }
 

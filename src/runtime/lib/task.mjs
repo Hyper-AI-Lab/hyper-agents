@@ -156,6 +156,21 @@ export async function approveTests(projectDir, config) {
   return state
 }
 
+// Clears the approved test baseline so that a test change the human approved in
+// the conversation can be made. The shell guard asks the human to confirm this
+// command, so the writer cannot reopen its own tests unnoticed.
+export async function reopenTests(projectDir, { reason }) {
+  if (typeof reason !== 'string' || reason.trim() === '') throw new TaskError('--reason must say which test change the human approved')
+  const state = await requireCurrent(projectDir)
+  if (!state.testsApprovedAt) throw new TaskError(`the tests of task ${state.id} are not approved; there is nothing to reopen`)
+  const previous = state.testsApprovedAt
+  state.testsApprovedAt = null
+  state.status = 'testing'
+  await writeState(projectDir, state)
+  await appendProgress(projectDir, state.id, `tests reopened (approved at ${shortSha(previous)}): ${reason.trim()}`)
+  return { state, previous }
+}
+
 export async function blockTask(projectDir, { trigger, reason }) {
   const n = Number(trigger)
   if (!Number.isInteger(n) || n < 1 || n > 7) throw new TaskError('--trigger must be a number from 1 to 7')

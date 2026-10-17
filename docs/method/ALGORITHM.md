@@ -186,7 +186,7 @@ Each phase lists its entry condition, the steps, the artifact it produces and it
   3. For high-stakes work, or at L1, the human approves the tests.
   4. Commit the tests, and record the commit in `state.json` as `testsApprovedAt`.
 - **Exit:** committed tests that fail for the right reason.
-- **Rule:** from `testsApprovedAt` on, test files, CI configuration, the check manifest and agent configuration are **read-only to the writer**. The protect hook blocks edits to them, and the gate's diff audit (phase 7) catches edits made by any other route. A legitimate change to a protected file requires the human's explicit approval in the conversation and a new `testsApprovedAt`.
+- **Rule:** from `testsApprovedAt` on, test files, CI configuration, the check manifest and agent configuration are **read-only to the writer**. The protect hook blocks edits to them, and the gate's diff audit (phase 7) catches edits made by any other route. A legitimate change to a protected file requires the human's explicit approval in the conversation, `paacm task reopen-tests` (which the human confirms) and a new `testsApprovedAt`.
 
 ### Phase 6: Implement
 

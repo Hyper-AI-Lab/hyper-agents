@@ -90,6 +90,8 @@ claude -p "$PROMPT" --output-format json > ../session-expiry-paacm-1.json
 jq '{blocked: (.result | split("\n") | any(startswith("BLOCKED:"))), tokens: (.usage | .input_tokens + .output_tokens + .cache_creation_input_tokens + .cache_read_input_tokens), cost_usd: .total_cost_usd, wall_sec: (.duration_ms / 1000 | floor)}' ../session-expiry-paacm-1.json
 ```
 
+In `claude -p`, Claude Code ignores the project's `permissions.allow` rules in a folder that has never been trusted, and says so on standard error; a new clone or worktree is such a folder. Trust it once, by opening it interactively and accepting the dialog or by setting `projects["<path>"].hasTrustDialogAccepted` to `true` in `~/.claude.json`, or pass the rules the run needs with `--allowedTools` ([Claude Code permissions](https://code.claude.com/docs/en/permissions#what-runs-before-you-trust-a-folder)). Every trial checkout is new, so a PAACM arm without this fails on refused runtime commands, not on the task.
+
 Decide `--claimed` from the final message in `.result`: `blocked` when a line starts with `BLOCKED:`, `done` when the agent reports the work complete, `none` otherwise. An arm at L1 stops for approvals. Answer each one with `claude -p "<answer>" --resume <session_id> --output-format json` and count it as an intervention. In a resumed run, `total_cost_usd` covers the whole conversation, while `usage`, `duration_ms` and `num_turns` cover only that run: take the cost from the last run and add up the tokens and the time.
 
 ## 3. Grade each trial

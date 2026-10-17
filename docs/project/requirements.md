@@ -164,3 +164,12 @@ Release 3.4.0 sharpens intake, escalation and debugging with practices from Matt
 Evidence (`npm test`, 90 tests):
 
 - `test/content.test.mjs`: intake and specification ask in rounds and no longer one question at a time; specification checks terms against a glossary; escalation offers a questionnaire in the task folder; debugging builds a red loop before ranking hypotheses.
+
+## Release 3.4.1
+
+Release 3.4.1 fixes what an audit of 3.4.0 found (R4, R10, R12): the gate's configuration is frozen with the tests, task state is written only by the runtime, the protect hook fails closed and resolves real paths, the shell guard covers the gate configuration, the task state and commands that hide changes from git, and `eval` refuses an unquoted hidden-tests placeholder when the path has a space.
+
+Evidence (`npm test`, 105 tests):
+
+- `test/hardening.test.mjs`: one test per finding, each failing before the fix; a control test that a human-approved configuration change with a new test baseline still passes; and the `reopen-tests` flow from approval through a new baseline.
+- Headless Claude Code 2.1.292 runs on a fixture project: a FAST fix end to end (task, approved test, fix, gate, done), and a request to change an approved test (refused by the hook, escalated with trigger 4).

@@ -12,7 +12,7 @@
 | 6 | A needed edit outside the files the plan lists | The fix also requires changing a shared helper the plan did not name |
 | 7 | A destructive, irreversible or consequential action | Dropping a table; deleting branches; deploying (`autonomy.md`) |
 
-These triggers apply at every autonomy level. Do not try to work around them, and do not ask about things you can decide yourself (naming, internal structure, the order of steps).
+These triggers apply at every autonomy level. Do not try to work around them, and do not ask about things you can decide yourself (naming, internal structure, the order of steps). Approvals the phases ask for (the specification, the plan, the tests) are ordinary questions, not blocks: ask them and end your turn without a `BLOCKED:` line.
 
 ## The protocol
 
