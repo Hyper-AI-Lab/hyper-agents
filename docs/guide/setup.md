@@ -133,6 +133,33 @@ Run the checks yourself to see that they work:
 npx github:Hyper-AI-Lab/hyper-agents check --tier quick
 ```
 
+### Add a mutation check (optional)
+
+Once tests are approved for a task they are frozen, so the gate is only as strong as their ability to catch faults. Coverage does not measure that. A mutation tool does: it changes the code in small ways and counts the changes that no test notices. Add one to the `full` tier and set the score below which it fails, for example with StrykerJS for TypeScript:
+
+```text
+full|mutation|npx stryker run --incremental
+```
+
+StrykerJS exits with code 1 when the mutation score is below `thresholds.break` in its configuration. With no `break` value it never fails ([configuration](https://stryker-mutator.io/docs/stryker-js/configuration/)). `--incremental` reuses the previous run's results for code and tests that did not change ([incremental mode](https://stryker-mutator.io/docs/stryker-js/incremental/)). For Python, mutmut re-tests only the functions whose source changed, but it documents no failing exit code for surviving mutants ([mutmut](https://mutmut.readthedocs.io/en/latest/)), so wrap it in a script that reads its results and exits non-zero below your threshold. Mutation runs are slow: keep them out of the `quick` tier.
+
+When the mutation check fails, the agent does not edit the frozen tests. It lists the surviving mutants and asks you whether to add tests ([phase 7](../method/ALGORITHM.md#phase-7-verify), [ADR 0018](../method/adr/0018-test-strength.md)).
+
+## Code intelligence (optional)
+
+With a language server connected, Claude Code sees the type errors and missing imports an edit introduced right after the edit, before the gate runs. The explorer and the reviewer also get the read-only `LSP` tool, which finds definitions, references and implementations by symbol instead of by text search ([ADR 0017](../method/adr/0017-code-intelligence.md)).
+
+1. Install the language server for each language your project uses. The [official table](https://code.claude.com/docs/en/plugins/code-intelligence) names the plugin and its binary: for TypeScript, `typescript-lsp` needs `typescript-language-server` (`npm install -g typescript-language-server typescript`); for Python, `pyright-lsp` needs `pyright-langserver`.
+2. Install the plugin for yourself, or declare it for the team from a terminal at the repository root and commit `.claude/settings.json`:
+
+   ```bash
+   claude plugin install typescript-lsp@claude-plugins-official --scope project
+   ```
+
+3. Run `doctor`. It warns when the project enables an official code-intelligence plugin whose language server is not on `PATH`.
+
+The plugins work in terminal sessions; cloud sessions do not start language servers. A language server can disagree with the project's own type checker, and the gate's checks stay the authority. In Cursor, the agent reads the editor's diagnostics for open files ([Cursor forum](https://forum.cursor.com/t/does-agents-iterate-on-lint-errors-work-with-custom-third-party-lsp-servers-or-only-built-in-linters/168705)).
+
 ## Check the installation
 
 ```bash

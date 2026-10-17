@@ -3,6 +3,7 @@ import { readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { test } from 'node:test'
 import { detectChecks } from '../src/cli/detect.mjs'
+import { codeIntelligencePlugins } from '../src/cli/doctor.mjs'
 import { main } from '../src/cli/main.mjs'
 import { captureIo, cli, read, repo, ROOT, tempDir, writeFiles } from './helpers.mjs'
 
@@ -118,6 +119,31 @@ test('the dispatcher: help, version, unknown commands and bad options', async ()
   const initHelp = await run('init', '--help')
   assert.equal(initHelp.code, 0)
   assert.match(initHelp.text, /--autonomy <L0\|L1\|L2\|L3>/)
+})
+
+test('doctor finds the official code-intelligence plugins a project enables', () => {
+  const settings = {
+    enabledPlugins: {
+      'pyright-lsp@claude-plugins-official': true,
+      'typescript-lsp@claude-plugins-official': false,
+      'pyright-lsp@someone-else': true,
+      'commit-commands@claude-plugins-official': true,
+    },
+  }
+  assert.deepEqual(codeIntelligencePlugins(settings), [{ plugin: 'pyright-lsp', binary: 'pyright-langserver' }])
+  assert.deepEqual(codeIntelligencePlugins(null), [])
+})
+
+test('doctor reports an enabled code-intelligence plugin and whether its language server is installed', async (t) => {
+  const dir = await repo(t, {
+    files: {
+      '.agent/checks.conf': 'quick|unit|npm test\nfull|build|npm run build\n',
+      '.claude/settings.json': JSON.stringify({ enabledPlugins: { 'typescript-lsp@claude-plugins-official': true } }),
+    },
+  })
+  const r = cli(dir, 'doctor')
+  assert.equal(r.code, 0, r.out)
+  assert.match(r.stdout, /code intelligence: typescript-lsp (\(typescript-language-server found\)|is enabled but typescript-language-server is not on PATH)/)
 })
 
 test('doctor lists project extensions and warns about unknown names and missing protection', async (t) => {

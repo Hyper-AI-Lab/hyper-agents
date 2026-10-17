@@ -1,5 +1,6 @@
 // `paacm doctor`: checks that a PAACM installation is complete and healthy.
 import { spawnSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
 import { loadContent } from '../lib/content.mjs'
@@ -12,6 +13,33 @@ import { fromPosix, listFiles, readJsonOrNull, readTextOrNull, sha256 } from '..
 import { head, isRepo } from '../runtime/lib/git.mjs'
 import { matchesAny } from '../runtime/lib/glob.mjs'
 import { LOCK_PATH, readLock } from './install.mjs'
+
+// Anthropic's official code-intelligence plugins and the language server each
+// starts (code.claude.com/docs/en/plugins/code-intelligence). A plugin does not
+// include its server; without it Claude gets no diagnostics or code navigation.
+export const LSP_BINARIES = {
+  'clangd-lsp': 'clangd',
+  'csharp-lsp': 'csharp-ls',
+  'gopls-lsp': 'gopls',
+  'jdtls-lsp': 'jdtls',
+  'kotlin-lsp': 'kotlin-lsp',
+  'lua-lsp': 'lua-language-server',
+  'php-lsp': 'intelephense',
+  'pyright-lsp': 'pyright-langserver',
+  'ruby-lsp': 'ruby-lsp',
+  'rust-analyzer-lsp': 'rust-analyzer',
+  'swift-lsp': 'sourcekit-lsp',
+  'typescript-lsp': 'typescript-language-server',
+}
+
+// The official code-intelligence plugins a Claude Code settings object enables.
+export function codeIntelligencePlugins(settings) {
+  return Object.entries(settings?.enabledPlugins ?? {})
+    .filter(([, on]) => on === true)
+    .map(([id]) => id.split('@'))
+    .filter(([name, marketplace]) => marketplace === 'claude-plugins-official' && Object.hasOwn(LSP_BINARIES, name))
+    .map(([name]) => ({ plugin: name, binary: LSP_BINARIES[name] }))
+}
 
 // Installed as defaults and meant to be edited, so a change is not reported.
 const PROJECT_CONFIG = new Set(['.agent/paacm.json', '.agent/checks.conf'])
@@ -65,7 +93,29 @@ export async function doctor(args, io) {
     }
   }
   if (config === null || validateConfig(config).length === 0) await checkExtensions(targetDir, { ok, warn })
+  await checkCodeIntelligence(targetDir, { ok, warn })
   return finish(io, results)
+}
+
+function onPath(command) {
+  const extensions = process.platform === 'win32' ? (process.env.PATHEXT ?? '.EXE;.CMD;.BAT').split(';') : ['']
+  const dirs = (process.env.PATH ?? '').split(path.delimiter).filter(Boolean)
+  return dirs.some((dir) => extensions.some((ext) => existsSync(path.join(dir, command + ext))))
+}
+
+// Code-intelligence plugins the project enables for its team, and whether each
+// one's language server is installed here.
+async function checkCodeIntelligence(targetDir, { ok, warn }) {
+  let settings
+  try {
+    settings = await readJsonOrNull(fromPosix(targetDir, '.claude/settings.json'))
+  } catch {
+    return // Claude Code reports an unreadable settings file itself.
+  }
+  for (const { plugin, binary } of codeIntelligencePlugins(settings)) {
+    if (onPath(binary)) ok(`code intelligence: ${plugin} (${binary} found)`)
+    else warn(`code intelligence: ${plugin} is enabled but ${binary} is not on PATH, so Claude gets no diagnostics or code navigation for that language; install it as the plugin's README says`)
+  }
 }
 
 // Project extensions: each must be named after a paacm reference (or the agent

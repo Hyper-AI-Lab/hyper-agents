@@ -34,8 +34,8 @@ PAACM turns a development request into an accepted change with the least human a
 |---|---|---|---|---|
 | **Writer** | The main agent session | The strongest available model; high reasoning effort for planning and diagnosis, medium for routine edits | The working tree, within the permission boundary of the autonomy level | The main thread, kept lean |
 | **Explorer** | Subagent `paacm-explorer` | A fast, inexpensive model | None (read-only) | Fresh. Returns `path:line` pointers, short quoted snippets and a summary of at most about 2,000 tokens |
-| **Implementer** (optional) | Subagent `paacm-implementer` | An inexpensive model | The files named in its brief, in its own worktree when running in parallel | Fresh. Receives a written brief (section 9) |
-| **Reviewer** | Subagent `paacm-reviewer` | A strong model | None (read-only) | Fresh. Sees only the diff, the specification and the executed evidence |
+| **Implementer** (optional) | Subagent `paacm-implementer` | An inexpensive model; medium reasoning effort | The files named in its brief, in its own worktree when running in parallel | Fresh. Receives a written brief (section 9) |
+| **Reviewer** | Subagent `paacm-reviewer` | A strong model; high reasoning effort | None (read-only) | Fresh. Sees only the diff, the specification and the executed evidence |
 | **Gate** | Hook scripts and the check runner (`paacm check`) | None (deterministic) | None | Not applicable |
 
 The **human** approves specifications, plans and consequential tests, answers escalations, and merges. The writer MUST NOT merge its own change into a protected branch.
@@ -180,7 +180,7 @@ Each phase lists its entry condition, the steps, the artifact it produces and it
 
 - **Entry:** STANDARD and DEEP; FAST when no existing test covers the change.
 - **Steps:**
-  1. Write the reproduction test for a defect, or acceptance tests derived from the acceptance criteria for new behaviour, plus any pre- and postconditions worth asserting.
+  1. Write the reproduction test for a defect, or acceptance tests derived from the acceptance criteria for new behaviour, plus any pre- and postconditions worth asserting. For rule evaluation, parsing and transformations, include a property-based test when the project has a property-testing library.
   2. Run them and confirm they fail, and fail for the right reason.
   3. For high-stakes work, or at L1, the human approves the tests.
   4. Commit the tests, and record the commit in `state.json` as `testsApprovedAt`.
@@ -208,6 +208,7 @@ Each phase lists its entry condition, the steps, the artifact it produces and it
   4. **High-stakes escalations:**
      - Run held-out acceptance tests kept outside the writer's workspace, in CI.
      - Optionally, run best-of-N: two to four worktree-isolated attempts, filtered by the regression and acceptance tests, then selected by the reviewer. The selector MUST be independent of the tests the writer saw.
+  5. A project MAY configure a mutation check in the `full` tier. When it fails, the writer MUST NOT edit the frozen tests; it reports the surviving mutants and stops with `BLOCKED:` (trigger 4) for the human to decide on more tests.
 - **Exit:** the gate is green and the diff audit is clean.
 - **Rule:** after **three consecutive gate failures on the same check** (the retry cap), the writer MUST stop and escalate (trigger 5) instead of trying again.
 
@@ -285,10 +286,10 @@ Do not commit. Do not edit tests. If the task conflicts with the tests or spec, 
 
 Each rung is cheaper and earlier than the next. A task is accepted only on rungs the writer cannot alter.
 
-1. Post-edit format, lint and type checks on touched files (hook).
+1. Post-edit format, lint and type checks on touched files (hook), and the language server's diagnostics after each edit when a code-intelligence plugin is installed.
 2. The task's focused verification command (phase 6).
 3. The `quick` tier of `.agent/checks.conf` (stop gate).
-4. The `full` tier for STANDARD changes before delivery, and always for DEEP.
+4. The `full` tier for STANDARD changes before delivery, and always for DEEP, including a mutation check when the project configures one.
 5. The `security` tier for security-relevant diffs.
 6. The protected-path diff audit against `testsApprovedAt`.
 7. The fresh-context review (phase 8).
@@ -345,6 +346,7 @@ A criterion is `passed` only with evidence produced by the harness in this sessi
 | Shell guard | `PreToolUse` hook, matcher `Bash` | `beforeShellExecution` hook, `failClosed: true` |
 | Post-edit checks | `PostToolUse` hook, matcher `Edit\|Write` | `postToolUse` hook, matcher `Write` |
 | Stop gate | `Stop` hook returning `decision: "block"` while checks fail | `stop` hook returning `followup_message` while checks fail, bounded by `loop_limit` |
+| Code intelligence | Official code-intelligence plugins (`pyright-lsp`, `typescript-lsp`, …): diagnostics after edits and the read-only `LSP` tool for the explorer and reviewer | The editor's language servers: the agent reads diagnostics for open files |
 | Autonomy levels | Permission modes, `permissions` rules and the sandbox in `.claude/settings.json` | Run modes, `.cursor/permissions.json` and `.cursor/sandbox.json` |
 | Distribution | Plugin marketplace (`.claude-plugin/marketplace.json`) or project install | Plugin (`.cursor-plugin/`) or project install |
 

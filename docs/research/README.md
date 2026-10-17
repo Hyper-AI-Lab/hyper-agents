@@ -2,7 +2,7 @@
 
 This is the research PAACM is built on. It surveys the approaches, architectures, methods, libraries and tools for agentic coding that existed in October 2026, compares them on evidence, and derives the single method that [the PAACM algorithm](../method/ALGORITHM.md) specifies.
 
-**Research date:** 14 October 2026. **Tool versions covered:** Claude Code 2.1.299, Cursor 3.24. **Sources:** public material only, about 210 distinct URLs.
+**Research date:** 14 October 2026. **Tool versions covered:** Claude Code 2.1.299, Cursor 3.24. **Sources:** public material only, about 210 distinct URLs. **Addendum, 17 October 2026:** test strength (mutation and property-based tests) in [04-verification.md](04-verification.md#added-on-17-october-2026-how-strong-are-the-frozen-tests) and code intelligence in [07-claude-code-and-cursor.md](07-claude-code-and-cursor.md#added-on-17-october-2026-code-intelligence).
 
 ## Summary
 

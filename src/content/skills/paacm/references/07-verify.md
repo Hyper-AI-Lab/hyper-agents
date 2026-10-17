@@ -25,6 +25,8 @@
    - Ask the human to run the held-out acceptance tests in CI (tests kept outside your workspace), and wait for the result.
    - Optionally, when the human asks for it, run best-of-N: two to four attempts in separate worktrees (`delegation.md`), filtered by the regression and acceptance tests, then chosen by `paacm-reviewer`.
 
+**A failing mutation check.** A project may add a mutation-testing check to the `full` tier. When it fails, the approved tests miss faults in the code you changed. Do not edit the tests. List the surviving mutants (file, line, and the change the tool made) under the report, and stop with `BLOCKED:` trigger 4 to ask the human whether to add tests, which needs a new `paacm task approve-tests`. A mutant that survives because the mutated code is not needed may instead be removed, as an implementation change within the plan.
+
 **The retry cap.** The gate counts consecutive failures. After **three** consecutive failures of the same check, stop and escalate with trigger 5 instead of trying again. More attempts against the same visible tests make an agent more likely to game them, not to fix the problem.
 
 Never weaken a check, edit a protected file, or claim a pass the gate did not report. If a check cannot run (a missing tool, a missing service), record the exact reason and the risk it leaves under CHECKS NOT RUN.

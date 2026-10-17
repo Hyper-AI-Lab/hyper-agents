@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.2.0 — Code intelligence and test strength
+
+- **Reasoning effort by role.** The reviewer runs at `high` effort and the implementer at `medium`, as [ADR 0010](docs/method/adr/0010-model-allocation.md) prescribes; Cursor ignores the field.
+- **Code intelligence.** The explorer and the reviewer use the read-only `LSP` tool when a code-intelligence plugin is installed. The setup guide explains the official plugins, and `paacm doctor` warns when a project enables one whose language server is not on `PATH` ([ADR 0017](docs/method/adr/0017-code-intelligence.md)).
+- **Test strength.** Phase 5 adds a property-based test for rule, parsing and transformation logic when the project has a property-testing library. A project may add a mutation check to the `full` tier; when it fails, the agent reports the surviving mutants and asks for more tests instead of editing the frozen ones ([ADR 0018](docs/method/adr/0018-test-strength.md)).
+- **Evaluation.** The evaluation guide shows how to read the outcome, tokens, cost and time of a `claude -p` trial for `eval grade`, including resumed runs.
+- **Research addendum (17 October 2026).** New evidence on mutation testing, property-based testing and clean code in [04-verification.md](docs/research/04-verification.md), and on code intelligence in [07-claude-code-and-cursor.md](docs/research/07-claude-code-and-cursor.md).
+
 ## 3.1.0 — Project extensions
 
 - **Project extensions.** A repository adds its own rules to any phase in `.agent/extensions/<reference file name>`, for example a knowledge base to read at intake, fields a spec must have, reviewers to run, or a learnings step at delivery. So an existing team workflow and PAACM run as one process.

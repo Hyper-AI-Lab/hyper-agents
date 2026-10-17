@@ -21,6 +21,8 @@ The writer uses the strongest model, with high reasoning effort for planning, di
 
 Lower cost per accepted change. The evidence is vendor-reported, which is why the evaluation harness re-tests it.
 
+Since 3.2.0 the agent definitions set the effort: `high` for the reviewer and `medium` for the implementer. Cursor ignores the field; it sets effort through the model ID.
+
 ## Alternatives considered
 
 Maximum effort everywhere and switching the lead's model mid-session (rejected in [ADR 0014](0014-rejected-approaches.md)).

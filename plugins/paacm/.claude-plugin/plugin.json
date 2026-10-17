@@ -1,6 +1,6 @@
 {
   "name": "paacm",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "description": "PAACM: the Verified Single-Writer Loop for agentic coding. One writer agent, read-only explorer and reviewer subagents, tests protected after approval, and completion gated on executed checks.",
   "author": {
     "name": "Hyper AI Lab",
