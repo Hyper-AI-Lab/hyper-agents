@@ -33,6 +33,18 @@ These triggers apply at every autonomy level. Do not try to work around them, an
 
 A precise `BLOCKED:` report is a correct outcome. Finishing anyway, with failing checks, guessed behaviour or edited tests, is the failure this protocol exists to prevent.
 
+## When someone else must decide
+
+When the decision belongs to someone who is not in the conversation (a client, a product owner, another team), offer to draft a questionnaire for them. Ask the human only who it is for and what they need back, then write `.agent/tasks/<task-id>/questionnaire-<slug>.md`, in the recipient's language:
+
+- the purpose and the decision that depends on the answers;
+- who it is for, and how the answers will be used;
+- one paragraph of context for a reader who was not in the conversation;
+- the questions, most important first, one idea each, with space for the answer under each and a one-line reason only where a question could be misread;
+- a closing question: is there anything else we should know?
+
+The human sends it. When the answers arrive, log them (`paacm task log "answers: …"`) and resume as below.
+
 ## Resuming after an answer
 
 When the human answers, log the decision (`paacm task log "decision: …"`), set the phase you are returning to (`paacm task phase <phase>`), and continue. If the answer changes the specification or the plan, update those files first and get them re-approved at L0–L2.

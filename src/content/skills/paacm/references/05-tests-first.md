@@ -7,6 +7,7 @@
    - For a defect: a regression test that reproduces it.
    - For new behaviour: acceptance tests derived from the acceptance criteria in `SPEC.md` (or from the triage summary), plus assertions of important pre- and postconditions.
    - Assert observable behaviour, not implementation details, so the tests survive a correct refactor.
+   - Compute expected values independently of the code under test. An assertion that recomputes the expected value the way the code does, such as `expect(add(a, b)).toBe(a + b)`, passes by construction and proves nothing.
    - For rule evaluation, parsing and data transformations, add at least one property-based test (an invariant checked over generated inputs) when the project has a property-testing library, such as Hypothesis or fast-check. Proposing a new library is a dependency change the human approves.
 3. **Run them and confirm they fail for the right reason.** A test that passes before the change proves nothing; a test that fails because of a typo or a missing import is not yet a test. Quote the failure line.
 4. **Approval.** At L1, and for every high-stakes task, show the tests to the human and ask for approval. Wrong tests lock in wrong behaviour, so the human reviews them like code.

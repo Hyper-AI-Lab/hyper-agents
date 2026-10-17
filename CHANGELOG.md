@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.4.0 — Questions in rounds and loop-first debugging
+
+- **Questions in rounds.** Intake and specification ask every open question that does not depend on another open answer in one numbered round, each with a recommended answer worded so that "yes" accepts it, instead of one question per turn. The agent finds facts itself and asks only for decisions. The specification phase checks the request's terms against the project's glossary.
+- **Questionnaires.** When a decision belongs to someone outside the conversation, the agent offers to draft a questionnaire for them in the task folder.
+- **Loop-first debugging.** Debugging builds one fast, deterministic command that fails on the reported symptom, shrinks the reproduction, ranks three to five falsifiable hypotheses before testing any, and tags temporary log lines so that one search removes them.
+- **Tests and extensions.** Tests compute expected values independently of the code under test. The extension guide gives five rules for writing agent instructions.
+- These practices come from Matt Pocock's skills (MIT), rewritten in the method's own terms ([ADR 0020](docs/method/adr/0020-question-rounds-questionnaires-and-loop-first-debugging.md)). The research addendum also records why ECC and the official `ralph-loop` plugin are not adopted.
+
 ## 3.3.0 — Error-handling review and companion plugins
 
 - **Error-handling reviewer.** `paacm-silent-failure-hunter`, adapted from Anthropic's `silent-failure-hunter` (Apache License 2.0), reviews the same `review-input.md` as the reviewer when a diff changes error handling, and reports only failures the changed code can hide: swallowed errors, overly broad catches, unrequested fallbacks, retries that give up silently ([ADR 0019](docs/method/adr/0019-error-handling-review-and-companion-plugins.md)).

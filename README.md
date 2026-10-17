@@ -72,7 +72,7 @@ The [user guide](docs/guide/README.md) covers setup, writing requests, supportin
 
 ## Status and limits
 
-PAACM 3.3.0 is a complete implementation of the specification for Claude Code and Cursor, including project extensions for adapting it to a repository's own conventions ([guide](docs/guide/extending.md)). Markdown instructions are guidance; the enforcement comes from the hooks, the IDE's permissions and its sandbox. Use the power layer or a plugin when enforcement matters. The method's evidence comes from published studies and vendor guidance, not from your code: [evaluate it](docs/guide/evaluation.md) on tasks from your own history before relying on a claim that it helps.
+PAACM 3.4.0 is a complete implementation of the specification for Claude Code and Cursor, including project extensions for adapting it to a repository's own conventions ([guide](docs/guide/extending.md)). Markdown instructions are guidance; the enforcement comes from the hooks, the IDE's permissions and its sandbox. Use the power layer or a plugin when enforcement matters. The method's evidence comes from published studies and vendor guidance, not from your code: [evaluate it](docs/guide/evaluation.md) on tasks from your own history before relying on a claim that it helps.
 
 Upgrading from PAACM 2.0.0: see [upgrading-from-2.md](docs/guide/upgrading-from-2.md).
 

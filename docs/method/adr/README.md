@@ -23,3 +23,4 @@ Each record states one design decision of PAACM 3.0, the evidence behind it, and
 | [0017](0017-code-intelligence.md) | Code intelligence through language servers |
 | [0018](0018-test-strength.md) | Test strength: property-based tests and an optional mutation check |
 | [0019](0019-error-handling-review-and-companion-plugins.md) | An error-handling reviewer and optional companion plugins |
+| [0020](0020-question-rounds-questionnaires-and-loop-first-debugging.md) | Questions in rounds, questionnaires for absent deciders, and loop-first debugging |
