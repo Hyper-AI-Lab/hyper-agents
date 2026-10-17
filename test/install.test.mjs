@@ -31,7 +31,7 @@ test('init installs the core layer and records it; a second init refuses', async
   }
   assert.ok(!existsSync(path.join(dir, '.claude/settings.json')), 'the core layer installs no hooks')
   const l = await lock(dir)
-  assert.equal(l.version, '3.0.0')
+  assert.equal(l.version, JSON.parse(await readFile(path.join(ROOT, 'package.json'), 'utf8')).version)
   assert.deepEqual(l.options, { ides: ['claude', 'cursor'], layer: 'core', autonomy: 'L1' })
   assert.ok(l.files['.claude/skills/paacm/SKILL.md'].sha256)
   assert.match(await read(dir, 'CLAUDE.md'), /^@AGENTS\.md$/m)

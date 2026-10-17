@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
-import { rm, writeFile } from 'node:fs/promises'
+import { readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { test } from 'node:test'
 import { detectChecks } from '../src/cli/detect.mjs'
 import { main } from '../src/cli/main.mjs'
-import { captureIo, cli, read, repo, tempDir, writeFiles } from './helpers.mjs'
+import { captureIo, cli, read, repo, ROOT, tempDir, writeFiles } from './helpers.mjs'
 
 const labels = (r) => r.proposals.map((p) => `${p.tier}|${p.label}|${p.command}`)
 
@@ -108,7 +108,7 @@ test('the dispatcher: help, version, unknown commands and bad options', async ()
   const help = await run('help')
   assert.equal(help.code, 0)
   for (const command of ['init', 'upgrade', 'uninstall', 'doctor', 'detect', 'check', 'eval']) assert.match(help.text, new RegExp(`^  ${command} `, 'm'))
-  assert.equal((await run('--version')).text, '3.0.0')
+  assert.equal((await run('--version')).text, JSON.parse(await readFile(path.join(ROOT, 'package.json'), 'utf8')).version)
   const unknown = await run('deploy')
   assert.equal(unknown.code, 2)
   assert.match(unknown.text, /unknown command "deploy"/)

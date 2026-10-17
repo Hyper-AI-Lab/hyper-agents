@@ -11,7 +11,7 @@
     {
       "name": "paacm",
       "description": "PAACM: the Verified Single-Writer Loop for agentic coding. One writer agent, read-only explorer and reviewer subagents, tests protected after approval, and completion gated on executed checks.",
-      "version": "3.0.0",
+      "version": "3.1.0",
       "source": "plugins/paacm"
     }
   ]

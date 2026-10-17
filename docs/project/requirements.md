@@ -126,3 +126,15 @@ Commands run on the 2.0.0 tree on 2026-10-14 (Node 24.21.0, Linux):
 - **Cursor** was not run live: no Cursor CLI was available. The Cursor side is verified against the documented formats (`paacm validate`), and the hooks against Cursor's contract with recorded payloads (`test/hooks.test.mjs`).
 - **macOS and Windows** were verified only through the CI matrix, not on a local machine.
 - **Effectiveness:** PAACM's effect on a team's own code is not measured by this release. `paacm eval` and the [evaluation guide](../guide/evaluation.md) let each team measure it, and ALGORITHM §14 sets how the method evolves from those results.
+
+## Release 3.1.0
+
+Release 3.1.0 adds project extensions (R4, R5, R9). A repository extends any phase in `.agent/extensions/<reference>.md` without forking the kit ([ALGORITHM.md section 15](../method/ALGORITHM.md#15-project-extensions), [ADR 0016](../method/adr/0016-project-extensions.md), [guide](../guide/extending.md)).
+
+Evidence (`npm test`, 86 tests):
+
+- `test/content.test.mjs`: every reference ends with its extension line.
+- `test/hooks.test.mjs`: the session-start listing for both IDEs and protection of extensions.
+- `test/runtime.test.mjs`: the reviewer checklist in `review-input.md`.
+- `test/tools.test.mjs`: `doctor`'s warnings.
+- `test/install.test.mjs`: install, upgrade from 3.0 and uninstall leave extensions intact.
