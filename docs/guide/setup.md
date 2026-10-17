@@ -160,6 +160,19 @@ With a language server connected, Claude Code sees the type errors and missing i
 
 The plugins work in terminal sessions; cloud sessions do not start language servers. A language server can disagree with the project's own type checker, and the gate's checks stay the authority. In Cursor, the agent reads the editor's diagnostics for open files ([Cursor forum](https://forum.cursor.com/t/does-agents-iterate-on-lint-errors-work-with-custom-third-party-lsp-servers-or-only-built-in-linters/168705)).
 
+## Companion plugins (optional)
+
+Two plugins from Anthropic's official marketplace work alongside PAACM in Claude Code. The kit does not install either ([ADR 0019](../method/adr/0019-error-handling-review-and-companion-plugins.md)).
+
+**`claude-security`: a security scan for high-stakes work.** A team of agents maps the code, hunts for vulnerabilities and tries to disprove each finding before it reaches the report, which it writes with a SARIF log to a git-ignored `CLAUDE-SECURITY-*` folder ([README](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/claude-security)). When it is installed, PAACM runs a scan of the changes at high effort during verification of high-stakes work, and you confirm the scan's time and cost. It is also worth a whole-repository scan before a release. Install it with `/plugin install claude-security@claude-plugins-official`. It adds small hooks after shell commands, for usage metrics and tips.
+
+**`security-guidance`: security warnings while editing.** It warns on about 25 dangerous patterns when a file is edited, reviews the diff with a model when a turn ends, and reviews each commit with an agent that follows data flow across files ([README](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/security-guidance)). Before you enable it, know what it adds:
+
+- Your linters may already cover the pattern warnings, and PAACM's post-edit hook runs them on every edit (for example Ruff's `S` rules for Python and Biome's security rules for TypeScript).
+- When the Claude Agent SDK is missing, its session-start hook installs the SDK into a virtual environment under `~/.claude/security/` from the package index, whatever review switches you set.
+- Its reviews send the diff, and for commit reviews the files the reviewer reads, to your model endpoint. They cost model calls on every turn and commit.
+- Its turn-end review runs beside PAACM's stop gate and reviewer. To keep one review per turn, set `ENABLE_STOP_REVIEW` to `0` in the `env` of `.claude/settings.json` and keep the commit review.
+
 ## Check the installation
 
 ```bash

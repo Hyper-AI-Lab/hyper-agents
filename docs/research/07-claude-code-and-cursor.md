@@ -339,3 +339,15 @@ Since neither tool's checkpoints capture everything, the method treats **git com
 ## Added on 17 October 2026: code intelligence
 
 Claude Code connects language servers through code-intelligence plugins. Anthropic's official marketplace has one per language (`pyright-lsp` for Python, `typescript-lsp` for TypeScript and JavaScript, and others for C/C++, C#, Go, Java, Kotlin, Lua, PHP, Ruby, Rust and Swift). A plugin names the server command and the file extensions; the developer installs the binary. With a server running, Claude gets the errors and warnings an edit introduced right after the edit, and a read-only `LSP` tool for definitions, references, implementations, call hierarchies and workspace symbols. The tool needs no permission, stays inactive until a plugin is installed, and is not available in cloud sessions ([code intelligence plugins](https://code.claude.com/docs/en/plugins/code-intelligence); [tools reference](https://code.claude.com/docs/en/tools-reference#lsp-tool-behavior)) [V]. In Cursor, the agent reads the editor's diagnostics for open files from the same store as the Problems panel; according to Cursor staff, the Agents window, the CLI and cloud agents do not run that loop ([Cursor forum](https://forum.cursor.com/t/does-agents-iterate-on-lint-errors-work-with-custom-third-party-lsp-servers-or-only-built-in-linters/168705)) [A].
+
+## Added on 17 October 2026: Anthropic's official plugins
+
+Anthropic's official marketplace (`claude-plugins-official`, read at commit `ea10b21`) has plugins the study did not assess. The ones that touch this method ([marketplace](https://github.com/anthropics/claude-plugins-official/tree/main/plugins)) [V]:
+
+| Plugin | What it does | Verdict for PAACM |
+|---|---|---|
+| `pr-review-toolkit` | Six review agents: code, comments, tests, silent failures, type design, simplification. Apache License 2.0 | Adapt `silent-failure-hunter` as a read-only reviewer for error handling; the others overlap the reviewer and the phase rules |
+| `claude-security` | A multi-agent vulnerability scan whose findings must survive independent verification; report plus SARIF; patch suggestions. Proprietary | Use when installed, for high-stakes work and releases |
+| `security-guidance` | Edit-time pattern warnings, a turn-end diff review and a per-commit agentic review. Its session-start hook installs the Claude Agent SDK from the package index when it is missing | Optional companion; project linters often cover the patterns, and the turn-end review duplicates PAACM's |
+| `frontend-design` | Pushes distinctive, bold visual design for frontend work | Not adopted: it conflicts with a project's own design system |
+| `claude-md-management` | Audits `CLAUDE.md` and writes session learnings into it | Not adopted: model-written instruction files lowered success in the study's evidence, so always-on instructions stay human-written ([ADR 0004](../method/adr/0004-minimal-instructions.md)) |

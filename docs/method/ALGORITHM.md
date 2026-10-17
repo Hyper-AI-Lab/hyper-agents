@@ -36,6 +36,7 @@ PAACM turns a development request into an accepted change with the least human a
 | **Explorer** | Subagent `paacm-explorer` | A fast, inexpensive model | None (read-only) | Fresh. Returns `path:line` pointers, short quoted snippets and a summary of at most about 2,000 tokens |
 | **Implementer** (optional) | Subagent `paacm-implementer` | An inexpensive model; medium reasoning effort | The files named in its brief, in its own worktree when running in parallel | Fresh. Receives a written brief (section 9) |
 | **Reviewer** | Subagent `paacm-reviewer` | A strong model; high reasoning effort | None (read-only) | Fresh. Sees only the diff, the specification and the executed evidence |
+| **Error-handling reviewer** (when the diff changes error handling) | Subagent `paacm-silent-failure-hunter` | A strong model; high reasoning effort | None (read-only) | Fresh. Same input as the reviewer; reports only failures the changed code can hide |
 | **Gate** | Hook scripts and the check runner (`paacm check`) | None (deterministic) | None | Not applicable |
 
 The **human** approves specifications, plans and consequential tests, answers escalations, and merges. The writer MUST NOT merge its own change into a protected branch.
@@ -208,7 +209,8 @@ Each phase lists its entry condition, the steps, the artifact it produces and it
   4. **High-stakes escalations:**
      - Run held-out acceptance tests kept outside the writer's workspace, in CI.
      - Optionally, run best-of-N: two to four worktree-isolated attempts, filtered by the regression and acceptance tests, then selected by the reviewer. The selector MUST be independent of the tests the writer saw.
-  5. A project MAY configure a mutation check in the `full` tier. When it fails, the writer MUST NOT edit the frozen tests; it reports the surviving mutants and stops with `BLOCKED:` (trigger 4) for the human to decide on more tests.
+  5. When the `claude-security` plugin is installed, high-stakes work also runs its scan of the changes at high effort; confirmed findings are fixed within the plan or end in `BLOCKED:`.
+  6. A project MAY configure a mutation check in the `full` tier. When it fails, the writer MUST NOT edit the frozen tests; it reports the surviving mutants and stops with `BLOCKED:` (trigger 4) for the human to decide on more tests.
 - **Exit:** the gate is green and the diff audit is clean.
 - **Rule:** after **three consecutive gate failures on the same check** (the retry cap), the writer MUST stop and escalate (trigger 5) instead of trying again.
 
@@ -217,7 +219,7 @@ Each phase lists its entry condition, the steps, the artifact it produces and it
 - **Entry:** STANDARD and DEEP, after phase 7 is green.
 - **Steps:**
   1. Delegate to the reviewer with the diff, `SPEC.md` (or the triage line) and the gate output, and nothing else. The reviewer ignores the prose of commit messages and pull request descriptions.
-  2. The reviewer reports only **correctness, requirement and scope** findings, each with file and line evidence and a severity. It does not suggest refactors or style changes.
+  2. The reviewer reports only **correctness, requirement and scope** findings, each with file and line evidence and a severity. It does not suggest refactors or style changes. When the diff adds or changes error handling, the error-handling reviewer reviews the same input and reports only failures the changed code can hide, such as swallowed errors, overly broad catches and unrequested fallbacks.
   3. The writer fixes every correctness finding (returning to phase 6), or explains why a finding is wrong.
 - **Exit:** no unresolved correctness findings.
 
@@ -346,6 +348,7 @@ A criterion is `passed` only with evidence produced by the harness in this sessi
 | Shell guard | `PreToolUse` hook, matcher `Bash` | `beforeShellExecution` hook, `failClosed: true` |
 | Post-edit checks | `PostToolUse` hook, matcher `Edit\|Write` | `postToolUse` hook, matcher `Write` |
 | Stop gate | `Stop` hook returning `decision: "block"` while checks fail | `stop` hook returning `followup_message` while checks fail, bounded by `loop_limit` |
+| Security scan (high-stakes) | The `claude-security` plugin, when installed | Not available (a Claude Code plugin) |
 | Code intelligence | Official code-intelligence plugins (`pyright-lsp`, `typescript-lsp`, …): diagnostics after edits and the read-only `LSP` tool for the explorer and reviewer | The editor's language servers: the agent reads diagnostics for open files |
 | Autonomy levels | Permission modes, `permissions` rules and the sandbox in `.claude/settings.json` | Run modes, `.cursor/permissions.json` and `.cursor/sandbox.json` |
 | Distribution | Plugin marketplace (`.claude-plugin/marketplace.json`) or project install | Plugin (`.cursor-plugin/`) or project install |

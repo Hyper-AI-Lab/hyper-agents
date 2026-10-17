@@ -148,3 +148,11 @@ Evidence (`npm test`, 88 tests):
 - `test/tools.test.mjs`: `doctor` finds the official code-intelligence plugins a project enables and reports whether each language server is installed.
 - `node bin/paacm.mjs validate`: the subagents' new `effort` fields are supported subagent fields; `build --check`: the plugin copies for both IDEs match the source.
 - `test/docs.test.mjs`: every new link and anchor resolves.
+
+## Release 3.3.0
+
+Release 3.3.0 adds an error-handling reviewer and uses Anthropic's official security tools where they fit (R3, R4, R9). `paacm-silent-failure-hunter` reviews diffs that change error handling, high-stakes verification runs the `claude-security` scan when that plugin is installed, and the setup guide explains `security-guidance` and its costs ([ADR 0019](../method/adr/0019-error-handling-review-and-companion-plugins.md)).
+
+Evidence (`npm test`, 89 tests):
+
+- `test/content.test.mjs`: the new reviewer is read-only, carries its licence notice, and both review paths (phase 8 and the `paacm-review` skill) run it on error-handling changes; the plugin ships four valid agents.

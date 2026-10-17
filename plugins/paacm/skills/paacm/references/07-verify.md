@@ -23,6 +23,7 @@
 5. **User-interface work:** run the browser end-to-end checks the repository has, and compare screenshots with the design from intake.
 6. **High-stakes work:**
    - Ask the human to run the held-out acceptance tests in CI (tests kept outside your workspace), and wait for the result.
+   - When the `claude-security` plugin is installed (Claude Code), run a security scan of the changes at high effort, for example `/claude-security scan my branch at high`. The scan asks the human to confirm its time and cost. Fix each confirmed finding within the plan and run the gate again, or stop with `BLOCKED:` when the fix lies outside the plan. The scan writes its report to a git-ignored `CLAUDE-SECURITY-*` folder; that is not an edit of yours.
    - Optionally, when the human asks for it, run best-of-N: two to four attempts in separate worktrees (`delegation.md`), filtered by the regression and acceptance tests, then chosen by `paacm-reviewer`.
 
 **A failing mutation check.** A project may add a mutation-testing check to the `full` tier. When it fails, the approved tests miss faults in the code you changed. Do not edit the tests. List the surviving mutants (file, line, and the change the tool made) under the report, and stop with `BLOCKED:` trigger 4 to ask the human whether to add tests, which needs a new `paacm task approve-tests`. A mutant that survives because the mutated code is not needed may instead be removed, as an implementation change within the plan.
