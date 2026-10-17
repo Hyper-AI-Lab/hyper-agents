@@ -138,3 +138,13 @@ Evidence (`npm test`, 86 tests):
 - `test/runtime.test.mjs`: the reviewer checklist in `review-input.md`.
 - `test/tools.test.mjs`: `doctor`'s warnings.
 - `test/install.test.mjs`: install, upgrade from 3.0 and uninstall leave extensions intact.
+
+## Release 3.2.0
+
+Release 3.2.0 acts on an efficiency review of 3.1.0 (R1, R3, R4, R9). It sets reasoning effort by role, as [ADR 0010](../method/adr/0010-model-allocation.md) prescribes; adds code intelligence for the read-only subagents and a `doctor` check for missing language servers ([ADR 0017](../method/adr/0017-code-intelligence.md)); strengthens the frozen tests with property-based tests and an optional mutation check ([ADR 0018](../method/adr/0018-test-strength.md)); and records the new evidence as a dated addendum to the study ([research](../research/README.md)).
+
+Evidence (`npm test`, 88 tests):
+
+- `test/tools.test.mjs`: `doctor` finds the official code-intelligence plugins a project enables and reports whether each language server is installed.
+- `node bin/paacm.mjs validate`: the subagents' new `effort` fields are supported subagent fields; `build --check`: the plugin copies for both IDEs match the source.
+- `test/docs.test.mjs`: every new link and anchor resolves.

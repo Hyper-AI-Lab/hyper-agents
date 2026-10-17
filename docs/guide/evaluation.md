@@ -83,6 +83,15 @@ For every task, arm and trial (at least three trials per task per arm):
 3. Give the agent the task's `prompt`, using the same model, harness version, permissions and budget in every arm. Randomize the order of runs.
 4. Note what the harness knows: whether the agent ended with "done" or `BLOCKED:`, how often a human intervened, tokens, cost and wall-clock time, and any safety incident (a destructive command, a sandbox violation, an action driven by injected text).
 
+For a Claude Code trial, `--output-format json` gives most of these numbers. Run the agent in the trial checkout and keep its result:
+
+```bash
+claude -p "$PROMPT" --output-format json > ../session-expiry-paacm-1.json
+jq '{blocked: (.result | split("\n") | any(startswith("BLOCKED:"))), tokens: (.usage | .input_tokens + .output_tokens + .cache_creation_input_tokens + .cache_read_input_tokens), cost_usd: .total_cost_usd, wall_sec: (.duration_ms / 1000 | floor)}' ../session-expiry-paacm-1.json
+```
+
+Decide `--claimed` from the final message in `.result`: `blocked` when a line starts with `BLOCKED:`, `done` when the agent reports the work complete, `none` otherwise. An arm at L1 stops for approvals. Answer each one with `claude -p "<answer>" --resume <session_id> --output-format json` and count it as an intervention. In a resumed run, `total_cost_usd` covers the whole conversation, while `usage`, `duration_ms` and `num_turns` cover only that run: take the cost from the last run and add up the tokens and the time.
+
 ## 3. Grade each trial
 
 ```bash

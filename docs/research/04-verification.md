@@ -37,3 +37,11 @@ These results assemble into a **verification ladder**. Each rung guards against 
 | 9 | Human merge-readiness review | Test-passing PRs that are not mergeable (0 of 15) | [METR](https://metr.org/blog/2025-08-12-research-update-towards-reconciling-slowdown-with-time-horizons/) [PP] | PR review |
 
 The ladder also constrains best-of-N. Sampling multiple attempts pays only when the selector is independent of the visible tests the generator saw: held-out tests, a hybrid of tests and a judge, or a fresh-context reviewer. Otherwise more search buys more gaming.
+
+## Added on 17 October 2026: how strong are the frozen tests?
+
+The ladder freezes the tests the human approves, so everything above it inherits their strength. Coverage does not measure that strength. The MutGen study found suites with 100% coverage and a 4% mutation score, and feeding surviving mutants back to the model raised mutation scores significantly over prompting alone and over EvoSuite on 204 subjects ([arXiv 2506.02954](https://arxiv.org/abs/2506.02954)) [PR, IEEE TSE 2026]. SWE-Mutation builds a benchmark on the same idea, with agent-generated semantic mutants filtered by a golden suite ([arXiv 2605.22175](https://arxiv.org/abs/2605.22175)) [PP]. Mutation testing needs passing tests, so in this method it runs after implementation, as an optional `full`-tier check whose failure goes back to the human ([ADR 0018](../method/adr/0018-test-strength.md)).
+
+Property-based tests reach bugs that example tests miss. An agent that inferred properties and wrote Hypothesis tests for 100 Python packages produced bug reports of which 56% were valid, 86% among the top-ranked ones, and maintainers merged several of its fixes, including in NumPy ([arXiv 2510.09907](https://arxiv.org/abs/2510.09907)) [PR, NeurIPS 2025]. PBT-Bench measured 42–83% recall of seeded bugs across models under property-test prompting ([arXiv 2605.15229](https://arxiv.org/abs/2605.15229)) [PP].
+
+Clean code changes cost more than correctness. In 660 Claude Code trials on minimal-pair repositories, cleaner code did not change the pass rate, but agents used 7–8% fewer tokens and revisited files 34% less. The authors work at a static-analysis vendor ([arXiv 2605.20049](https://arxiv.org/abs/2605.20049)) [PP].

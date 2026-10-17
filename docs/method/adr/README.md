@@ -20,3 +20,5 @@ Each record states one design decision of PAACM 3.0, the evidence behind it, and
 | [0014](0014-rejected-approaches.md) | Approaches the method rejects |
 | [0015](0015-node-cli.md) | A zero-dependency Node command-line tool replaces the shell scripts |
 | [0016](0016-project-extensions.md) | Projects extend the method per phase, never by removing a gate |
+| [0017](0017-code-intelligence.md) | Code intelligence through language servers |
+| [0018](0018-test-strength.md) | Test strength: property-based tests and an optional mutation check |
