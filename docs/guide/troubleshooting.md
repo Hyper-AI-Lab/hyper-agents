@@ -65,7 +65,7 @@ The session start could not write to `paacm-sessions/` in the worktree's git dir
 
 ### Edits in a worktree are judged by that worktree
 
-Each linked worktree, next to the project or nested in it (for example under `.claude/worktrees/`), has its own `.agent/tasks/` and its own current task. The protect hook checks an edit against the worktree the file is in. An approved test in a worktree is read-only even when the agent's session started in the main checkout, and an ordinary file in a nested worktree is no longer treated as agent configuration.
+Each linked worktree, next to the project or nested in it (for example under `.claude/worktrees/`), has its own `.agent/tasks/` and its own current task. The protect hook checks an edit against the worktree the file is in. An approved test in a worktree is read-only even when the agent's session started in the main checkout, and an ordinary file in a nested worktree is no longer treated as agent configuration. Moving into a worktree does not release the session's own task: the stop hook still checks it. If you open a folder that holds several checkouts (not itself a git repository), each checkout below it is protected by its own rules.
 
 ### `init` lists conflicts and writes nothing
 
