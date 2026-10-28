@@ -1,11 +1,14 @@
 // The working tree as it was when the session started, so that the stop hook can
 // tell the agent's edits from work in progress the user already had. The
-// baseline lives in the system temporary folder, never in the repository.
-import { readFile } from 'node:fs/promises'
-import os from 'node:os'
+// baseline lives in the worktree's own git directory (paacm-sessions/), which
+// belongs to the clone's owner: never in a temporary folder that other accounts
+// on the machine share, and never in the working tree.
+import { mkdir, readdir, readFile, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { readJsonOrNull, sha256, writeFileAtomic } from './fs.mjs'
-import { uncommittedPaths } from './git.mjs'
+import { git, uncommittedPaths } from './git.mjs'
+
+const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
 
 // Claude Code sends session_id; Cursor sends conversation_id.
 export function sessionIdFrom(input) {
@@ -13,8 +16,23 @@ export function sessionIdFrom(input) {
   return typeof id === 'string' && id !== '' ? id : null
 }
 
+// <git directory>/paacm-sessions/<hash>.json, or null outside a git repository.
 function baselineFile(projectDir, sessionId) {
-  return path.join(os.tmpdir(), 'paacm-sessions', `${sha256(`${path.resolve(projectDir)}\0${sessionId}`).slice(0, 32)}.json`)
+  const r = git(projectDir, ['rev-parse', '--absolute-git-dir'], { allowFail: true })
+  if (!r.ok) return null
+  return path.join(r.stdout.trim(), 'paacm-sessions', `${sha256(`${path.resolve(projectDir)}\0${sessionId}`).slice(0, 32)}.json`)
+}
+
+// Removes baselines (and leftover temporary files) older than 30 days.
+async function prune(dir) {
+  for (const name of await readdir(dir)) {
+    const file = path.join(dir, name)
+    try {
+      if (Date.now() - (await stat(file)).mtimeMs > MAX_AGE_MS) await rm(file, { force: true })
+    } catch {
+      // Another session removed it first.
+    }
+  }
 }
 
 async function fileHash(projectDir, rel) {
@@ -25,15 +43,18 @@ async function fileHash(projectDir, rel) {
   }
 }
 
-// Records the uncommitted files and their content. A resumed or compacted
-// session keeps its first baseline.
+// Records the uncommitted files and their content, readable only by the owner.
+// A resumed or compacted session keeps its first baseline. Throws when the
+// baseline cannot be written; the caller reports that and carries on.
 export async function recordBaseline(projectDir, sessionId) {
   if (!sessionId) return
   const file = baselineFile(projectDir, sessionId)
-  if ((await readBaseline(file)) !== null) return
+  if (!file || (await readBaseline(file)) !== null) return
   const files = {}
   for (const p of uncommittedPaths(projectDir)) files[p] = await fileHash(projectDir, p)
-  await writeFileAtomic(file, JSON.stringify({ files }))
+  await mkdir(path.dirname(file), { recursive: true, mode: 0o700 })
+  await prune(path.dirname(file))
+  await writeFileAtomic(file, JSON.stringify({ files }), 0o600)
 }
 
 async function readBaseline(file) {
@@ -48,8 +69,9 @@ async function readBaseline(file) {
 // Uncommitted files that are new or different since the session started, or
 // null when the session has no baseline.
 export async function changedThisSession(projectDir, sessionId) {
-  if (!sessionId) return null
-  const baseline = await readBaseline(baselineFile(projectDir, sessionId))
+  const file = sessionId ? baselineFile(projectDir, sessionId) : null
+  if (!file) return null
+  const baseline = await readBaseline(file)
   if (baseline === null) return null
   const changed = []
   for (const p of uncommittedPaths(projectDir)) {

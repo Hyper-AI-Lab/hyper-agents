@@ -37,12 +37,20 @@ runHook(async () => {
   }
 
   if (isRepo(projectDir)) {
-    await recordBaseline(projectDir, sessionIdFrom(input))
+    let baselineError = null
+    try {
+      await recordBaseline(projectDir, sessionIdFrom(input))
+    } catch (error) {
+      baselineError = error && error.message ? error.message : String(error)
+    }
     out.push('', '## Repository', '', `Branch: ${branch(projectDir) ?? '(detached)'}`)
     const status = statusShort(projectDir)
     out.push('', 'Uncommitted changes:', status ? `\n\`\`\`\n${status}\n\`\`\`` : '(none)')
     const commits = recentCommits(projectDir)
     if (commits) out.push('', 'Recent commits:', `\n\`\`\`\n${commits}\n\`\`\``)
+    if (baselineError) {
+      out.push('', `Warning: PAACM could not record the session baseline (${baselineError}). When no task is active, the stop hook will list every uncommitted file, not only the ones changed in this session.`)
+    }
   } else {
     out.push('', 'This folder is not a git repository. PAACM needs git for task baselines, the audit and per-task commits; ask the human before starting a coding task.')
   }
