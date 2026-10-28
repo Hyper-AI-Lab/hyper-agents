@@ -62,6 +62,13 @@ export const SHELL_RULES = [
   },
   {
     decision: 'ask',
+    id: 'skip-git-hooks',
+    pattern:
+      /\bgit\b[^\n;&|]*\s--no-verify\b|\bgit\b[^\n;&|]*\bcommit\b[^\n;&|]*\s-[a-z]*n[a-z]*(?=\s|$)|\bgit\b[^\n;&|]*\s-c\s*core\.hookspath\b|\bgit\b[^\n;&|]*\bconfig\b[^\n;&|]*\score\.hookspath\b|(?:^|[\s;&|(])(?:HUSKY=0|HUSKY_SKIP_HOOKS=1|SKIP=\S+|LEFTHOOK=0)\s[^\n;&|]*\bgit\b/i,
+    reason: "skips or redirects the repository's git hooks (pre-commit and pre-push checks)",
+  },
+  {
+    decision: 'ask',
     id: 'git-push',
     pattern: /\bgit\b[^\n;&|]*\bpush\b/,
     reason: 'pushes to a remote repository',
@@ -81,7 +88,7 @@ export const SHELL_RULES = [
   {
     decision: 'ask',
     id: 'publish-deploy',
-    pattern: /\b(?:npm|pnpm|bun)\s+publish\b|\byarn\s+(?:npm\s+)?publish\b|\bcargo\s+publish\b|\btwine\s+upload\b|\bgem\s+push\b|\bdocker\s+push\b|\bgh\s+(?:release\s+create|pr\s+merge|repo\s+delete)\b|\bterraform\s+(?:apply|destroy)\b|\btofu\s+(?:apply|destroy)\b|\bkubectl\s+(?:apply|delete|replace|scale|rollout)\b|\bhelm\s+(?:install|upgrade|uninstall|delete|rollback)\b|\bvercel\b[^\n;&|]*--prod\b|\b(?:firebase|fly|netlify)\s+deploy\b|\bheroku\b|\baws\s+\S+\s+(?:delete|remove|rm|terminate|put)\S*/i,
+    pattern: /\b(?:npm|pnpm|bun)\s+publish\b|\byarn\s+(?:npm\s+)?publish\b|\bcargo\s+publish\b|\btwine\s+upload\b|\bgem\s+push\b|\bdocker\b[^\n;&|]*\spush\b|\bgh\s+(?:release\s+create|pr\s+merge|repo\s+delete)\b|\b(?:terraform|tofu)\b[^\n;&|]*\s(?:apply|destroy)\b|\bkubectl\b[^\n;&|]*\s(?:apply|delete|replace|scale|rollout)\b|\bhelm\b[^\n;&|]*\s(?:install|upgrade|uninstall|delete|rollback)\b|\bvercel\b[^\n;&|]*--prod\b|\b(?:firebase|fly|netlify)\s+deploy\b|\bheroku\b|\baws\s+\S+\s+(?:delete|remove|rm|terminate|put)\S*/i,
     reason: 'publishes, deploys, or changes cloud or cluster resources',
   },
   {

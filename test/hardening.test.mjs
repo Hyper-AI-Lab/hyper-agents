@@ -145,3 +145,39 @@ test('gate and check print their exit code, so the report can quote it', async (
   assert.match(runtime(dir, 'gate').stdout, /^paacm gate: exit 0$/m)
   assert.match(runtime(dir, 'check', '--tier', 'quick').stdout, /^paacm check: exit 0$/m)
 })
+
+test('shell guard: skipping git hooks needs approval', () => {
+  const skips = [
+    'git commit --no-verify -m x',
+    'git commit -n -m x',
+    'git commit -nm x',
+    'git commit -am x -n',
+    'git push --no-verify origin main',
+    'git merge --no-verify feature',
+    'git -c core.hooksPath=/dev/null commit -m x',
+    'git config core.hooksPath /tmp/none',
+    'git config --local core.hookspath .nohooks',
+    'HUSKY=0 git commit -m x',
+    'HUSKY_SKIP_HOOKS=1 git commit -m x',
+    'SKIP=lint,test git commit -m x',
+    'LEFTHOOK=0 git commit -m x',
+  ]
+  for (const command of skips) {
+    const v = evaluateCommand(command)
+    assert.equal(v?.decision, 'ask', command)
+    assert.equal(v.id, 'skip-git-hooks', command)
+  }
+  assert.equal(evaluateCommand('git push -n origin main')?.id, 'git-push', 'push -n is a dry run')
+  for (const command of ['git commit --amend -m "-n"', 'git commit --signoff -m x', 'git log -n 3', 'git config core.editor vim', 'SKIP=1 npm test']) {
+    assert.equal(evaluateCommand(command), null, command)
+  }
+})
+
+test('shell guard: deploy commands are caught with global options before the subcommand', () => {
+  for (const command of ['terraform -chdir=infra apply', 'tofu -chdir=x destroy -auto-approve', 'kubectl --context prod apply -f x.yaml', 'helm --kube-context prod upgrade app ./chart', 'docker --context remote push registry/app:1', 'docker image push registry/app:1']) {
+    assert.equal(evaluateCommand(command)?.id, 'publish-deploy', command)
+  }
+  for (const command of ['terraform -chdir=infra plan -out=apply.plan', 'kubectl get pods -l action=delete', 'helm template app ./chart', 'docker build -t app .']) {
+    assert.equal(evaluateCommand(command), null, command)
+  }
+})
