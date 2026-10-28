@@ -1,11 +1,13 @@
 // Protect hook (Claude Code PreToolUse on edit tools, Cursor preToolUse on Write
 // and Delete). Refuses edits to approved tests and gates edits to executable
-// configuration. Configured to fail closed: if this script cannot decide, the
-// edit is blocked.
+// configuration. A file is judged by the worktree it is in, with that worktree's
+// configuration and task, so a linked worktree next to the project or nested in
+// it is protected like the project. Configured to fail closed: if this script
+// cannot decide, the edit is blocked.
 import { loadConfig } from '../lib/config.mjs'
 import { shortSha } from '../lib/git.mjs'
 import { CASE_INSENSITIVE_FS, matchesAny } from '../lib/glob.mjs'
-import { claudePreTool, cursorPermission, detectTool, editTarget, projectDirFrom, readHookInput, runHook, toProjectPath } from '../lib/hookio.mjs'
+import { claudePreTool, cursorPermission, detectTool, editLocation, editTarget, projectDirFrom, readHookInput, runHook } from '../lib/hookio.mjs'
 import { currentTask } from '../lib/task.mjs'
 
 runHook(async () => {
@@ -21,16 +23,17 @@ runHook(async () => {
   if (!target) {
     return deny('PAACM: the protect hook could not find the file this edit targets in the tool call, so it cannot check it against the protected paths. Report this to the human; the edit is refused until the hook recognises the tool.')
   }
-  const rel = toProjectPath(projectDir, target)
-  if (!rel) return allow()
+  const location = editLocation(projectDir, target)
+  if (!location) return allow()
+  const { root, rel } = location
   const opts = { ignoreCase: CASE_INSENSITIVE_FS }
   if (matchesAny(rel, ['.agent/tasks/CURRENT', '.agent/tasks/*/state.json'], opts)) {
     return deny(`PAACM: ${rel} is task state, written only by the paacm runtime. Change it with the paacm task commands (phase, approve-tests, block, done, resume).`)
   }
   if (matchesAny(rel, ['.agent/tasks', '.agent/tasks/**'], opts)) return allow()
 
-  const config = await loadConfig(projectDir)
-  const task = await currentTask(projectDir)
+  const config = await loadConfig(root)
+  const task = await currentTask(root)
 
   if (task && task.testsApprovedAt && matchesAny(rel, config.protect.tests, opts)) {
     const reason = `PAACM: ${rel} is a test file, and the tests were approved at ${shortSha(task.testsApprovedAt)}. Tests are read-only during implementation. If this test is wrong or contradicts the specification, stop with BLOCKED: trigger 4 and show the conflicting lines.`

@@ -76,10 +76,11 @@ export function commitAll(dir, message = 'change') {
 // The environment for child processes, without the IDE's project variables, so
 // that a test never acts on the repository it runs in.
 function cleanEnv(extra = {}) {
-  const env = { ...process.env, ...GIT_ENV, ...extra }
+  const env = { ...process.env, ...GIT_ENV }
   delete env.CLAUDE_PROJECT_DIR
   delete env.CURSOR_PROJECT_DIR
   delete env.CURSOR_VERSION
+  Object.assign(env, extra)
   for (const [k, v] of Object.entries(extra)) if (v === undefined) delete env[k]
   return env
 }

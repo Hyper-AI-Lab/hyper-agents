@@ -2,6 +2,7 @@
 // Gives the agent its bearings: the runtime command, the repository state and the
 // current task. When PAACM runs as a plugin, the project has no AGENTS.md block,
 // so the core rules are injected here instead.
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { hasBlock } from '../lib/blocks.mjs'
@@ -18,7 +19,10 @@ runHook(async () => {
   const input = await readHookInput()
   const tool = detectTool(input)
   const projectDir = projectDirFrom(input)
-  const runtime = path.join(scriptsDir, 'paacm.mjs')
+  // The project's own copy of the runtime when it has one: in a worktree session
+  // the hook may run from the main checkout's copy.
+  const ownRuntime = path.join(projectDir, '.claude', 'skills', 'paacm', 'scripts', 'paacm.mjs')
+  const runtime = existsSync(ownRuntime) ? ownRuntime : path.join(scriptsDir, 'paacm.mjs')
   const rel = toProjectPath(projectDir, runtime)
   const command = rel ? `node ${rel}` : `node "${runtime}"`
 

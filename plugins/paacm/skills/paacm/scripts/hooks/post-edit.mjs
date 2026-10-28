@@ -5,7 +5,7 @@
 import { spawnSync } from 'node:child_process'
 import { loadConfig } from '../lib/config.mjs'
 import { matchesAny } from '../lib/glob.mjs'
-import { detectTool, editTarget, emit, projectDirFrom, readHookInput, runHook, toProjectPath } from '../lib/hookio.mjs'
+import { detectTool, editLocation, editTarget, emit, projectDirFrom, readHookInput, runHook } from '../lib/hookio.mjs'
 
 const TIMEOUT_MS = 120_000
 const quote = (p) => (process.platform === 'win32' ? `"${p.replace(/"/g, '""')}"` : `'${p.replace(/'/g, "'\\''")}'`)
@@ -18,16 +18,17 @@ runHook(async () => {
     if (tool === 'cursor') emit({})
   }
   const target = editTarget(input.tool_input) ?? input.file_path
-  const rel = target ? toProjectPath(projectDir, target) : null
-  if (!rel || rel.startsWith('.agent/tasks/')) return done()
-  const config = await loadConfig(projectDir)
+  const location = target ? editLocation(projectDir, target) : null
+  if (!location || location.rel.startsWith('.agent/tasks/')) return done()
+  const { root, rel } = location
+  const config = await loadConfig(root)
   const commands = config.postEdit.filter((e) => matchesAny(rel, [e.glob]))
   if (commands.length === 0) return done()
 
   const failures = []
   for (const entry of commands) {
     const command = entry.command.split('{file}').join(quote(rel))
-    const r = spawnSync(command, { cwd: projectDir, shell: true, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', timeout: TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 })
+    const r = spawnSync(command, { cwd: root, shell: true, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', timeout: TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 })
     if (r.status !== 0) {
       const output = `${r.stdout ?? ''}${r.stderr ?? ''}`.trim().split('\n').slice(-30).join('\n')
       failures.push(`\`${command}\` exited ${r.status ?? (r.error ? r.error.message : 'abnormally')}:\n${output}`)

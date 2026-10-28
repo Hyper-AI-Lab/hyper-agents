@@ -9,9 +9,9 @@ import { parseArgs } from 'node:util'
 import { auditTask } from './lib/audit.mjs'
 import { missingTiers } from './lib/checks.mjs'
 import { loadConfig, TIERS } from './lib/config.mjs'
-import { exists } from './lib/fs.mjs'
 import { GATE, loadChecks, runGate } from './lib/gate.mjs'
-import { shortSha, topLevel } from './lib/git.mjs'
+import { shortSha } from './lib/git.mjs'
+import { findProjectDir } from './lib/project.mjs'
 import { runChecks } from './lib/runner.mjs'
 import {
   approveTests,
@@ -53,18 +53,9 @@ Exit codes: 0 success, 1 failure or refused, 2 usage or configuration error,
 3 a required check tier is not configured, 4 a protected test file or the gate
 configuration changed after the tests were approved.`
 
-// The project root: the nearest ancestor holding .agent/paacm.json, else the git
-// top level, else the current directory.
-export async function findProjectDir(start = process.cwd()) {
-  let dir = path.resolve(start)
-  for (;;) {
-    if (await exists(path.join(dir, '.agent', 'paacm.json'))) return dir
-    const parent = path.dirname(dir)
-    if (parent === dir) break
-    dir = parent
-  }
-  return topLevel(start) ?? path.resolve(start)
-}
+// The project root (lib/project.mjs): the nearest ancestor holding
+// .agent/paacm.json within the current worktree, else the worktree's root.
+export { findProjectDir }
 
 function formatState(s) {
   const lines = [

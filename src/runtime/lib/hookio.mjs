@@ -3,6 +3,7 @@
 // differ in event names (PascalCase vs camelCase) and in the response fields.
 import { realpathSync } from 'node:fs'
 import path from 'node:path'
+import { findProjectDir, sameRepository } from './project.mjs'
 
 export async function readHookInput({ timeoutMs = 5000 } = {}) {
   if (process.stdin.isTTY) return {}
@@ -36,9 +37,17 @@ export function detectTool(input) {
   return process.env.CURSOR_VERSION ? 'cursor' : 'claude'
 }
 
+// The project the hook acts on. The session's project (the IDE's project
+// directory) anchors the repository. The agent's current directory (`cwd`) picks
+// the worktree within it: Claude Code keeps CLAUDE_PROJECT_DIR at the original
+// root in a worktree session while `cwd` follows the agent. A `cwd` in another
+// repository does not move the project.
 export function projectDirFrom(input) {
   const candidates = [process.env.CLAUDE_PROJECT_DIR, process.env.CURSOR_PROJECT_DIR, Array.isArray(input.workspace_roots) ? input.workspace_roots[0] : undefined, input.cwd, process.cwd()]
-  return path.resolve(candidates.find((c) => typeof c === 'string' && c !== ''))
+  const anchor = findProjectDir(candidates.find((c) => typeof c === 'string' && c !== ''))
+  if (typeof input.cwd !== 'string' || input.cwd === '') return anchor
+  const here = findProjectDir(input.cwd)
+  return here !== anchor && sameRepository(here, anchor) ? here : anchor
 }
 
 // The real path of the longest existing prefix of an absolute path, with the rest
@@ -68,6 +77,21 @@ export function toProjectPath(projectDir, filePath) {
   const rel = path.relative(root, abs)
   if (rel === '' || rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) return null
   return rel.split(path.sep).join('/')
+}
+
+// The worktree an edited file belongs to (`root`) and its POSIX path there
+// (`rel`), or null when the file is outside the project. A file in another
+// worktree of the project's repository, next to it or nested in it, belongs to
+// that worktree and is judged by its configuration and task. A file in a
+// submodule belongs to the project that contains it.
+export function editLocation(projectDir, filePath) {
+  if (typeof filePath !== 'string' || filePath === '') return null
+  const abs = realPath(path.resolve(projectDir, filePath))
+  const root = findProjectDir(path.dirname(abs))
+  const rel = sameRepository(root, projectDir) ? toProjectPath(root, abs) : null
+  if (rel) return { root, rel }
+  const inProject = toProjectPath(projectDir, abs)
+  return inProject ? { root: path.resolve(projectDir), rel: inProject } : null
 }
 
 // The target file of an edit or write tool call. Claude Code documents
