@@ -1,12 +1,14 @@
 // Task state under .agent/tasks/: the current-task pointer, state.json, and the
 // append-only progress log. All writes are atomic.
+import { realpathSync } from 'node:fs'
 import { appendFile, mkdir, readdir, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { readJsonOrNull, readTextOrNull, stableJson, writeFileAtomic } from './fs.mjs'
-import { GIT_BUFFER, generatedPaths, head, shortSha, uncommittedPaths, workingTreeDiff } from './git.mjs'
+import { GIT_BUFFER, generatedPaths, git, head, shortSha, uncommittedPaths, workingTreeDiff } from './git.mjs'
 import { auditTask } from './audit.mjs'
 import { isProtectedTest, loadConfig, tierAtLeast, tierForRoute } from './config.mjs'
 import { readExtension, sectionOf } from './extensions.mjs'
+import { worktreeRoot } from './project.mjs'
 import { referencePath } from './references.mjs'
 
 export const TASKS_DIR = '.agent/tasks'
@@ -85,6 +87,48 @@ async function latestTask(projectDir) {
   return latest
 }
 
+const real = (p) => {
+  try {
+    return realpathSync.native(p)
+  } catch {
+    return path.resolve(p)
+  }
+}
+
+// The project at the same place in each other worktree of the repository.
+function otherWorktrees(projectDir) {
+  const tree = worktreeRoot(projectDir)
+  const r = tree ? git(projectDir, ['worktree', 'list', '--porcelain'], { allowFail: true }) : null
+  if (!r || !r.ok) return []
+  return r.stdout
+    .split('\n')
+    .filter((line) => line.startsWith('worktree '))
+    .map((line) => line.slice('worktree '.length))
+    .filter((other) => real(other) !== real(tree))
+    .map((other) => path.join(other, path.relative(tree, projectDir)))
+}
+
+// Refuses while a blocked task's frozen files are changed here. A new task has no
+// approved tests yet, so it would let such a change through without the human;
+// the change is settled in the blocked task. The tasks checked are the latest one
+// of this worktree (with `own`) and the latest one of each other worktree whose
+// approved test commit this HEAD contains: the refusal follows the commit, not
+// one .agent/tasks folder.
+async function refuseOverBlockedTask(projectDir, config, { own, before }) {
+  const dirs = [...(own ? [projectDir] : []), ...otherWorktrees(projectDir)]
+  for (const dir of dirs) {
+    const latest = await latestTask(dir)
+    if (!latest || latest.status !== 'blocked' || !latest.testsApprovedAt) continue
+    if (dir !== projectDir && !git(projectDir, ['merge-base', '--is-ancestor', latest.testsApprovedAt, 'HEAD'], { allowFail: true }).ok) continue
+    const changed = auditTask(projectDir, config, latest).violations.map((v) => v.path)
+    if (!changed.length) continue
+    const where = dir === projectDir ? '' : ` (in the worktree at ${dir})`
+    throw new TaskError(
+      `task ${latest.id}${where} is blocked, and these files frozen by its approved tests changed since: ${changed.slice(0, 10).join(', ')}. Resume it (paacm task resume ${latest.id}) to settle the change with the human (reopen-tests), or undo the change, before ${before}`,
+    )
+  }
+}
+
 async function setCurrent(projectDir, id) {
   const file = path.join(tasksDir(projectDir), 'CURRENT')
   if (id === null) await rm(file, { force: true })
@@ -101,18 +145,7 @@ export async function startTask(projectDir, { slug, route, summary, highStakes =
   if (active && !['done', 'blocked'].includes(active.status)) {
     throw new TaskError(`task ${active.id} is still ${active.status}; finish it (paacm task done), block it (paacm task block), or ask the human before starting another`)
   }
-  // A new task has no approved tests yet, so starting one would let a change to
-  // the previous task's frozen files through without the human. While the latest
-  // task is blocked with such a change, the change is settled in that task.
-  const latest = await latestTask(projectDir)
-  if (latest && latest.status === 'blocked' && latest.testsApprovedAt) {
-    const changed = auditTask(projectDir, config ?? (await loadConfig(projectDir)), latest).violations.map((v) => v.path)
-    if (changed.length) {
-      throw new TaskError(
-        `task ${latest.id} is blocked, and these files frozen by its approved tests changed since: ${changed.slice(0, 10).join(', ')}. Resume it (paacm task resume ${latest.id}) to settle the change with the human (reopen-tests), or undo the change, before starting another task`,
-      )
-    }
-  }
+  await refuseOverBlockedTask(projectDir, config ?? (await loadConfig(projectDir)), { own: true, before: 'starting another task' })
   const effectiveRoute = highStakes ? 'DEEP' : route
   const effectiveAutonomy = highStakes ? 'L1' : (autonomy ?? defaultAutonomy)
   const id = `${date.toISOString().slice(0, 10)}-${slug}`
@@ -198,6 +231,9 @@ export async function approveTests(projectDir, config) {
       )
     }
   }
+  // Another worktree's blocked task covers a task started there before the change
+  // was merged here.
+  await refuseOverBlockedTask(projectDir, config, { own: false, before: 'approving tests here' })
   const previous = state.testsApprovedAt
   const from = state.status
   state.testsApprovedAt = sha

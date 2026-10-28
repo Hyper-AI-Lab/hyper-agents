@@ -10,7 +10,7 @@ import { unquotedHidden } from '../src/cli/eval.mjs'
 import { matchesAny } from '../src/runtime/lib/glob.mjs'
 import { toProjectPath } from '../src/runtime/lib/hookio.mjs'
 import { evaluateCommand } from '../src/runtime/lib/shell-rules.mjs'
-import { commitAll, hook, repo, runtime, writeFiles } from './helpers.mjs'
+import { commitAll, git, hook, repo, runtime, tempDir, writeFiles } from './helpers.mjs'
 
 const pass = 'node -e "process.exit(0)"'
 const today = () => new Date().toISOString().slice(0, 10)
@@ -255,6 +255,42 @@ test('blocking a task and starting a new one cannot leave a changed approved tes
   await writeFiles(dir, { 'test/a.test.js': 'ok\n' })
   commitAll(dir, 'undo the edit')
   assert.equal(runtime(dir, 'task', 'start', '--slug', 'fresh', '--route', 'FAST', '--summary', 'x').code, 0, 'with the change undone a new task may start')
+})
+
+test('a blocked task with a changed approved test holds every worktree that has the change', async (t) => {
+  const dir = await approved(t)
+  const early = path.join(tempDir(t), 'early')
+  git(dir, 'worktree', 'add', '-q', '-b', 'early', early, 'HEAD')
+  assert.equal(runtime(early, 'task', 'start', '--slug', 'early', '--route', 'STANDARD', '--summary', 'x').code, 0, 'a task started before the change')
+  await writeFiles(dir, { 'test/a.test.js': 'weakened\n' })
+  commitAll(dir, 'edit the approved test')
+  assert.equal(runtime(dir, 'task', 'block', '--trigger', '4', '--reason', 'the test is wrong').code, 0)
+
+  const late = path.join(tempDir(t), 'late')
+  git(dir, 'worktree', 'add', '-q', '-b', 'late', late, 'HEAD')
+  const start = runtime(late, 'task', 'start', '--slug', 'late', '--route', 'FAST', '--summary', 'x')
+  assert.equal(start.code, 1, start.out)
+  assert.match(start.stderr, /task .*-h \(in the worktree at [^)]+\) is blocked[\s\S]*test\/a\.test\.js/)
+
+  git(early, 'merge', '-q', '--ff-only', 'late')
+  const approve = runtime(early, 'task', 'approve-tests')
+  assert.equal(approve.code, 1, approve.out)
+  assert.match(approve.stderr, /task .*-h \(in the worktree at [^)]+\) is blocked[\s\S]*test\/a\.test\.js[\s\S]*before approving tests here/)
+})
+
+test('a blocked task does not hold a worktree whose commit does not contain its approved tests', async (t) => {
+  const dir = await repo(t, { files: { '.agent/checks.conf': `quick|unit|${pass}\n`, 'src/a.js': 'a\n', 'test/a.test.js': 'ok\n' } })
+  git(dir, 'branch', 'side')
+  await writeFiles(dir, { 'test/a.test.js': 'stricter\n' })
+  commitAll(dir, 'a stricter test')
+  runtime(dir, 'task', 'start', '--slug', 'h', '--route', 'STANDARD', '--summary', 'x')
+  assert.equal(runtime(dir, 'task', 'approve-tests').code, 0)
+  await writeFiles(dir, { 'test/a.test.js': 'weakened\n' })
+  commitAll(dir, 'edit the approved test')
+  assert.equal(runtime(dir, 'task', 'block', '--trigger', '4', '--reason', 'the test is wrong').code, 0)
+  const side = path.join(tempDir(t), 'side')
+  git(dir, 'worktree', 'add', '-q', side, 'side')
+  assert.equal(runtime(side, 'task', 'start', '--slug', 'side', '--route', 'FAST', '--summary', 'x').code, 0)
 })
 
 test('shell guard: moving a ref directly needs approval', () => {
