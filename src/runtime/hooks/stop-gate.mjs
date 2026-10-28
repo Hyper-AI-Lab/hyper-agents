@@ -53,13 +53,16 @@ runHook(async () => {
 
   // A nudge is given once: never on a continuation, and not again when the same
   // stop arrives twice (Cursor also runs the Claude Code hooks it imports).
+  // The state is read again before writing: a gate this hook just ran has
+  // recorded its result there, which the task read at the start does not have.
   const nudge = async (kind, message) => {
     if (continuation) return allow()
     const fingerprint = worktreeFingerprint(projectDir)
-    const last = task.lastNudge
+    const current = (await currentTask(projectDir)) ?? task
+    const last = current.lastNudge
     if (last && last.kind === kind && last.fingerprint === fingerprint && Date.now() - Date.parse(last.at) < NUDGE_DEDUP_MS) return allow()
-    task.lastNudge = { kind, fingerprint, at: new Date().toISOString() }
-    await writeState(projectDir, task)
+    current.lastNudge = { kind, fingerprint, at: new Date().toISOString() }
+    await writeState(projectDir, current)
     return guide(message)
   }
   const waiting = 'If you are waiting for the human (a question or an approval), say so in your answer and stop again.'

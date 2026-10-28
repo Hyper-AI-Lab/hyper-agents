@@ -113,3 +113,20 @@ test('the runtime says which reference to read next', async (t) => {
   assert.match(runtime(dir, 'gate').stdout, /Next: phase 9, deliver[\s\S]*09-deliver\.md[\s\S]*paacm task done/)
   assert.doesNotMatch(runtime(dir, 'gate', '--json').stdout, /Next:/)
 })
+
+test('the stop gate keeps the result of the gate it ran itself when it then nudges', async (t) => {
+  const dir = await project(t, `quick|unit|${fail}\nfull|e2e|${pass}\n`)
+  const id = `${today()}-own`
+  runtime(dir, 'task', 'start', '--slug', 'own', '--route', 'STANDARD', '--summary', 'x')
+  runtime(dir, 'task', 'phase', 'implementing')
+  runtime(dir, 'gate')
+  runtime(dir, 'gate')
+  await writeFiles(dir, { '.agent/checks.conf': `quick|unit|${pass}\nfull|e2e|${pass}\n` })
+  commitAll(dir, 'fix the check')
+  const stop = hook('stop-gate', { hook_event_name: 'Stop', stop_hook_active: false }, { projectDir: dir })
+  assert.match(stopGuidance(stop), /gate is green/)
+  const state = JSON.parse(await read(dir, `.agent/tasks/${id}/state.json`))
+  assert.equal(state.lastGate.passed, true, 'the passing gate the hook ran is kept')
+  assert.equal(state.gateFailures, 0)
+  assert.equal(state.lastNudge.kind, 'finish')
+})
