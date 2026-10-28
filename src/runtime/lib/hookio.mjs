@@ -3,7 +3,7 @@
 // differ in event names (PascalCase vs camelCase) and in the response fields.
 import { realpathSync } from 'node:fs'
 import path from 'node:path'
-import { findProjectDir, sameRepository } from './project.mjs'
+import { findProjectDir, sameRepository, worktreeRoot } from './project.mjs'
 
 export async function readHookInput({ timeoutMs = 5000 } = {}) {
   if (process.stdin.isTTY) return {}
@@ -37,18 +37,28 @@ export function detectTool(input) {
   return process.env.CURSOR_VERSION ? 'cursor' : 'claude'
 }
 
-// The project the hook acts on. The session's project (the IDE's project
-// directory) anchors the repository. The agent's current directory (`cwd`) picks
-// the worktree within it: Claude Code keeps CLAUDE_PROJECT_DIR at the original
-// root in a worktree session while `cwd` follows the agent. A `cwd` in another
-// repository does not move the project.
-export function projectDirFrom(input) {
+// The projects a hook acts on: `anchor`, the session's project (from the IDE's
+// project directory), and `primary`, the one the agent works in. The agent's
+// current directory (`cwd`) moves the primary project only into another
+// worktree of the anchor's repository (Claude Code keeps CLAUDE_PROJECT_DIR at
+// the original root in a worktree session while `cwd` follows the agent), never
+// into a sub-folder of the same worktree or into another repository. When the
+// session's folder is not in a git repository (a folder holding several
+// checkouts), the repository `cwd` lies in is the primary project.
+export function projectDirsFrom(input) {
   const candidates = [process.env.CLAUDE_PROJECT_DIR, process.env.CURSOR_PROJECT_DIR, Array.isArray(input.workspace_roots) ? input.workspace_roots[0] : undefined, input.cwd, process.cwd()]
   const anchor = findProjectDir(candidates.find((c) => typeof c === 'string' && c !== ''))
-  if (typeof input.cwd !== 'string' || input.cwd === '') return anchor
+  if (typeof input.cwd !== 'string' || input.cwd === '') return { primary: anchor, anchor }
   const here = findProjectDir(input.cwd)
-  return here !== anchor && sameRepository(here, anchor) ? here : anchor
+  if (here === anchor) return { primary: anchor, anchor }
+  const anchorTree = worktreeRoot(anchor)
+  const hereTree = worktreeRoot(here)
+  if (anchorTree === null) return { primary: hereTree === null ? anchor : here, anchor }
+  const otherWorktree = hereTree !== null && hereTree !== anchorTree && sameRepository(here, anchor)
+  return { primary: otherWorktree ? here : anchor, anchor }
 }
+
+export const projectDirFrom = (input) => projectDirsFrom(input).primary
 
 // The real path of the longest existing prefix of an absolute path, with the rest
 // appended: symbolic links are resolved even for a file that does not exist yet.
@@ -83,12 +93,16 @@ export function toProjectPath(projectDir, filePath) {
 // (`rel`), or null when the file is outside the project. A file in another
 // worktree of the project's repository, next to it or nested in it, belongs to
 // that worktree and is judged by its configuration and task. A file in a
-// submodule belongs to the project that contains it.
+// submodule belongs to the project that contains it. When the project folder is
+// not in a git repository, a file in any checkout below it is judged by that
+// checkout.
 export function editLocation(projectDir, filePath) {
   if (typeof filePath !== 'string' || filePath === '') return null
   const abs = realPath(path.resolve(projectDir, filePath))
   const root = findProjectDir(path.dirname(abs))
-  const rel = sameRepository(root, projectDir) ? toProjectPath(root, abs) : null
+  // A session folder outside git holds checkouts: each file is judged by its own.
+  const judged = worktreeRoot(root) !== null && (worktreeRoot(projectDir) === null || sameRepository(root, projectDir))
+  const rel = judged ? toProjectPath(root, abs) : null
   if (rel) return { root, rel }
   const inProject = toProjectPath(projectDir, abs)
   return inProject ? { root: path.resolve(projectDir), rel: inProject } : null

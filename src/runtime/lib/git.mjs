@@ -71,14 +71,16 @@ export function uncommittedPaths(cwd) {
   return out
 }
 
+// Paths changed between a commit and HEAD (committed changes only).
+export function committedSince(cwd, base) {
+  if (!base) return []
+  const r = git(cwd, ['diff', '--name-only', '-z', '--no-renames', `${base}`, 'HEAD'], { allowFail: true })
+  return r.ok ? r.stdout.split('\0').filter(Boolean) : []
+}
+
 // Paths changed between a commit and HEAD, plus uncommitted changes.
 export function changedSince(cwd, base) {
-  const set = new Set(uncommittedPaths(cwd))
-  if (base) {
-    const r = git(cwd, ['diff', '--name-only', '-z', '--no-renames', `${base}`, 'HEAD'], { allowFail: true })
-    if (r.ok) for (const p of r.stdout.split('\0').filter(Boolean)) set.add(p)
-  }
-  return [...set].sort()
+  return [...new Set([...uncommittedPaths(cwd), ...committedSince(cwd, base)])].sort()
 }
 
 // The paths a task changed itself since `base`: the files of the commits on its

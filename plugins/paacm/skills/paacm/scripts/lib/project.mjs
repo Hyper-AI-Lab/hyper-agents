@@ -44,6 +44,19 @@ export function findProjectDir(start = process.cwd()) {
   return topLevel(start) ?? path.resolve(start)
 }
 
+// The root of the worktree a directory lies in (submodules passed through), or
+// null outside git. Reads the file system only.
+export function worktreeRoot(start) {
+  let dir = path.resolve(start)
+  for (;;) {
+    const entry = gitEntry(dir)
+    if (entry === 'dir' || (entry === 'file' && isLinkedWorktree(dir))) return dir
+    const parent = path.dirname(dir)
+    if (parent === dir) return null
+    dir = parent
+  }
+}
+
 function realOrResolved(p) {
   try {
     return realpathSync.native(p)

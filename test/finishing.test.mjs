@@ -130,3 +130,15 @@ test('the stop gate keeps the result of the gate it ran itself when it then nudg
   assert.equal(state.gateFailures, 0)
   assert.equal(state.lastNudge.kind, 'finish')
 })
+
+test("stop gate: the phases nudge does not count the human's work in progress from before the session", async (t) => {
+  const dir = await project(t)
+  await writeFiles(dir, { 'src/a.js': 'the human was already editing this\n' })
+  runtime(dir, 'task', 'start', '--slug', 'wip', '--route', 'STANDARD', '--summary', 'x')
+  const session = `wip-${process.pid}`
+  hook('session-start', { hook_event_name: 'SessionStart', session_id: session, cwd: dir }, { projectDir: dir })
+  const stop = () => hook('stop-gate', { hook_event_name: 'Stop', session_id: session, stop_hook_active: false, cwd: dir }, { projectDir: dir })
+  assert.equal(stop().json, null, "the human's own uncommitted edit is not the agent's")
+  await writeFiles(dir, { 'src/b.js': 'the agent wrote this\n' })
+  assert.match(stopGuidance(stop()), /still triaged/)
+})
