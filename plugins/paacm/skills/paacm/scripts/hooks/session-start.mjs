@@ -67,6 +67,7 @@ runHook(async () => {
       `## Current task: ${task.id}`,
       '',
       `Summary: ${task.summary}`,
+      ...(task.ref ? [`Work item: ${task.ref}`] : []),
       `Route: ${task.route}${task.highStakes ? ' (high-stakes)' : ''}; autonomy ${task.autonomy}; status ${task.status}; base ${shortSha(task.baseCommit) ?? 'none'}; tests approved at ${shortSha(task.testsApprovedAt) ?? 'not yet'}.`,
       task.lastGate ? `Last gate: tier ${task.lastGate.tier}, ${task.lastGate.passed ? 'passed' : `failed (${task.lastGate.failed})`} at ${shortSha(task.lastGate.head)}; consecutive failures ${task.gateFailures}.` : 'The gate has not run yet.',
       'Resume it with the paacm skill, phase 0: re-read the plan and progress, then run `paacm check --tier quick` before new work.',

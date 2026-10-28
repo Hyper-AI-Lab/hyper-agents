@@ -33,7 +33,7 @@ export const EXIT = { OK: 0, FAILED: 1, USAGE: 2, UNCONFIGURED: 3, PROTECTED: 4 
 const HELP = `Usage: paacm <command> [options]
 
 Task:
-  task start --slug <slug> --route <FAST|STANDARD|DEEP> --summary "<text>" [--high-stakes] [--autonomy <L0-L3>]
+  task start --slug <slug> --route <FAST|STANDARD|DEEP> --summary "<text>" [--high-stakes] [--autonomy <L0-L3>] [--ref <work item>]
   task status [--json]
   task phase <specifying|exploring|planning|testing|implementing|verifying|reviewing>
   task log "<text>"
@@ -61,7 +61,7 @@ export { findProjectDir }
 function formatState(s) {
   const lines = [
     `Task ${s.id} — ${s.summary}`,
-    `  route ${s.route}${s.highStakes ? ' (high-stakes)' : ''}, autonomy ${s.autonomy}, status ${s.status}`,
+    `  route ${s.route}${s.highStakes ? ' (high-stakes)' : ''}, autonomy ${s.autonomy}, status ${s.status}${s.ref ? `, work item ${s.ref}` : ''}`,
     `  base ${shortSha(s.baseCommit) ?? 'none'}, tests approved at ${shortSha(s.testsApprovedAt) ?? 'not yet'}`,
     s.lastGate
       ? `  last gate: tier ${s.lastGate.tier}, ${s.lastGate.passed ? 'passed' : `failed (${s.lastGate.failed})`} at ${shortSha(s.lastGate.head)}${s.lastGate.dirty ? ' with uncommitted changes' : ''}; consecutive failures ${s.gateFailures}`
@@ -77,7 +77,7 @@ async function taskCommand(args, out, projectDir) {
     case 'start': {
       const { values } = parseArgs({
         args: rest,
-        options: { slug: { type: 'string' }, route: { type: 'string' }, summary: { type: 'string' }, 'high-stakes': { type: 'boolean' }, autonomy: { type: 'string' } },
+        options: { slug: { type: 'string' }, route: { type: 'string' }, summary: { type: 'string' }, 'high-stakes': { type: 'boolean' }, autonomy: { type: 'string' }, ref: { type: 'string' } },
         strict: true,
       })
       const config = await loadConfig(projectDir)
@@ -87,6 +87,7 @@ async function taskCommand(args, out, projectDir) {
         summary: values.summary,
         highStakes: values['high-stakes'],
         autonomy: values.autonomy?.toUpperCase(),
+        ref: values.ref,
         defaultAutonomy: config.autonomy,
       })
       out(formatState(state))

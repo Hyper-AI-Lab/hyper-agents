@@ -15,6 +15,12 @@ export const LEVELS = ['L0', 'L1', 'L2', 'L3']
 export const PHASES = ['specifying', 'exploring', 'planning', 'testing', 'implementing', 'verifying', 'reviewing']
 export const STATUSES = ['triaged', ...PHASES, 'done', 'blocked']
 const SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/
+// A work item: an issue number (123, #123), a tracker key (PROJ-123), a GitHub
+// reference (owner/repo#123) or an https URL. Printable ASCII only, because it
+// is shown to agents and reviewers.
+const REF_RE = /^(?:#?\d+|[A-Za-z][A-Za-z0-9_]*-\d+|[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+#\d+|https:\/\/[\x21-\x7e]+)$/
+
+export const validRef = (ref) => typeof ref === 'string' && ref.length <= 200 && REF_RE.test(ref)
 
 export class TaskError extends Error {}
 
@@ -68,11 +74,12 @@ async function setCurrent(projectDir, id) {
   else await writeFileAtomic(file, `${id}\n`)
 }
 
-export async function startTask(projectDir, { slug, route, summary, highStakes = false, autonomy, defaultAutonomy = 'L1', date = new Date() }) {
+export async function startTask(projectDir, { slug, route, summary, highStakes = false, autonomy, ref, defaultAutonomy = 'L1', date = new Date() }) {
   if (!slug || !SLUG_RE.test(slug)) throw new TaskError('--slug must be lowercase letters, digits and hyphens')
   if (!ROUTES.includes(route)) throw new TaskError(`--route must be one of ${ROUTES.join(', ')}`)
   if (!summary || summary.trim() === '') throw new TaskError('--summary is required')
   if (autonomy !== undefined && !LEVELS.includes(autonomy)) throw new TaskError(`--autonomy must be one of ${LEVELS.join(', ')}`)
+  if (ref !== undefined && !validRef(ref)) throw new TaskError('--ref must be an issue number (123 or #123), a tracker key (PROJ-123), owner/repo#123 or an https URL, at most 200 characters')
   const active = await currentTask(projectDir)
   if (active && !['done', 'blocked'].includes(active.status)) {
     throw new TaskError(`task ${active.id} is still ${active.status}; finish it (paacm task done), block it (paacm task block), or ask the human before starting another`)
@@ -91,6 +98,7 @@ export async function startTask(projectDir, { slug, route, summary, highStakes =
   const state = {
     id,
     summary: summary.trim(),
+    ref: ref ?? null,
     route: effectiveRoute,
     highStakes: Boolean(highStakes),
     autonomy: effectiveAutonomy,
@@ -111,7 +119,7 @@ export async function startTask(projectDir, { slug, route, summary, highStakes =
   await appendProgress(
     projectDir,
     id,
-    `started: route ${effectiveRoute}${highStakes ? ' high-stakes' : ''}, autonomy ${effectiveAutonomy}, base ${shortSha(base) ?? 'none'} — ${state.summary}${notes.length ? ` (${notes.join('; ')})` : ''}`,
+    `started: route ${effectiveRoute}${highStakes ? ' high-stakes' : ''}, autonomy ${effectiveAutonomy}, base ${shortSha(base) ?? 'none'}${state.ref ? `, work item ${state.ref}` : ''} — ${state.summary}${notes.length ? ` (${notes.join('; ')})` : ''}`,
   )
   await setCurrent(projectDir, id)
   return state
@@ -364,6 +372,7 @@ export async function writeReviewInput(projectDir, config) {
     '',
     '## Requirements',
     '',
+    ...(state.ref ? [`Work item: ${state.ref}`, ''] : []),
     requirements,
     '',
     '## Evidence',
