@@ -8,7 +8,7 @@ Write each runtime command out in full, one per call, from the repository root. 
 
 | Command | Effect |
 |---|---|
-| `paacm task start --slug <slug> --route <FAST\|STANDARD\|DEEP> --summary "<text>" [--high-stakes] [--autonomy <L0\|L1\|L2\|L3>] [--ref <work item>]` | Creates `.agent/tasks/<YYYY-MM-DD>-<slug>/` with `state.json` and `progress.md`, records the current commit as `baseCommit`, and makes it the current task. Refuses if another task is active. High-stakes forces route DEEP and autonomy L1. `--ref` links the task to its work item: an issue number (`123`, `#123`), a tracker key (`PROJ-123`), `owner/repo#123` or an `https://` URL. |
+| `paacm task start --slug <slug> --route <FAST\|STANDARD\|DEEP> --summary "<text>" [--high-stakes] [--autonomy <L0\|L1\|L2\|L3>] [--ref <work item>]` | Creates `.agent/tasks/<YYYY-MM-DD>-<slug>/` with `state.json` and `progress.md`, records the current commit as `baseCommit`, and makes it the current task. Refuses if another task is active, or if the latest task is blocked and files frozen by its approved tests have changed since (resume that task to settle the change with the human). High-stakes forces route DEEP and autonomy L1. `--ref` links the task to its work item: an issue number (`123`, `#123`), a tracker key (`PROJ-123`), `owner/repo#123` or an `https://` URL. |
 | `paacm task status [--json]` | Prints the current task's state, or says that there is none. |
 | `paacm task phase <phase>` | Sets the status to one of `specifying`, `exploring`, `planning`, `testing`, `implementing`, `verifying`, `reviewing`, logs the change, and prints the reference to read (and the project extension of the same name, when there is one). |
 | `paacm task log "<text>"` | Appends a timestamped line to `progress.md`. |

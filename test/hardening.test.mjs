@@ -223,3 +223,17 @@ test('protect: CI actions and git-hook managers are protected configuration by d
   }
   assert.equal(edit('src/a.js').json, null)
 })
+
+test('blocking a task and starting a new one cannot leave a changed approved test behind', async (t) => {
+  const dir = await approved(t)
+  await writeFiles(dir, { 'test/a.test.js': 'weakened\n' })
+  commitAll(dir, 'edit the approved test')
+  assert.equal(runtime(dir, 'task', 'approve-tests').code, 1)
+  assert.equal(runtime(dir, 'task', 'block', '--trigger', '4', '--reason', 'the test is wrong').code, 0)
+  const start = runtime(dir, 'task', 'start', '--slug', 'fresh', '--route', 'FAST', '--summary', 'x')
+  assert.equal(start.code, 1, start.out)
+  assert.match(start.stderr, /task .*-h is blocked[\s\S]*test\/a\.test\.js[\s\S]*paacm task resume/)
+  await writeFiles(dir, { 'test/a.test.js': 'ok\n' })
+  commitAll(dir, 'undo the edit')
+  assert.equal(runtime(dir, 'task', 'start', '--slug', 'fresh', '--route', 'FAST', '--summary', 'x').code, 0, 'with the change undone a new task may start')
+})

@@ -89,6 +89,7 @@ async function taskCommand(args, out, projectDir) {
         autonomy: values.autonomy?.toUpperCase(),
         ref: values.ref,
         defaultAutonomy: config.autonomy,
+        config,
       })
       out(formatState(state))
       out(`Task folder: .agent/tasks/${state.id}/`)

@@ -1,11 +1,11 @@
 // Task state under .agent/tasks/: the current-task pointer, state.json, and the
 // append-only progress log. All writes are atomic.
-import { appendFile, mkdir, rm } from 'node:fs/promises'
+import { appendFile, mkdir, readdir, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { listFiles, readJsonOrNull, readTextOrNull, stableJson, writeFileAtomic } from './fs.mjs'
 import { GIT_BUFFER, generatedPaths, head, shortSha, uncommittedPaths, workingTreeDiff } from './git.mjs'
 import { auditTask } from './audit.mjs'
-import { isProtectedTest, tierAtLeast, tierForRoute } from './config.mjs'
+import { isProtectedTest, loadConfig, tierAtLeast, tierForRoute } from './config.mjs'
 import { readExtension, sectionOf } from './extensions.mjs'
 import { referencePath } from './references.mjs'
 
@@ -68,13 +68,30 @@ export async function appendProgress(projectDir, id, text) {
   await appendFile(path.join(taskDir(projectDir, id), 'progress.md'), line)
 }
 
+// The most recently updated task of the worktree, or null.
+async function latestTask(projectDir) {
+  let latest = null
+  let entries = []
+  try {
+    entries = await readdir(tasksDir(projectDir), { withFileTypes: true })
+  } catch {
+    return null
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    const state = await readJsonOrNull(path.join(tasksDir(projectDir), entry.name, 'state.json')).catch(() => null)
+    if (state && state.updatedAt && (!latest || state.updatedAt > latest.updatedAt)) latest = state
+  }
+  return latest
+}
+
 async function setCurrent(projectDir, id) {
   const file = path.join(tasksDir(projectDir), 'CURRENT')
   if (id === null) await rm(file, { force: true })
   else await writeFileAtomic(file, `${id}\n`)
 }
 
-export async function startTask(projectDir, { slug, route, summary, highStakes = false, autonomy, ref, defaultAutonomy = 'L1', date = new Date() }) {
+export async function startTask(projectDir, { slug, route, summary, highStakes = false, autonomy, ref, defaultAutonomy = 'L1', config, date = new Date() }) {
   if (!slug || !SLUG_RE.test(slug)) throw new TaskError('--slug must be lowercase letters, digits and hyphens')
   if (!ROUTES.includes(route)) throw new TaskError(`--route must be one of ${ROUTES.join(', ')}`)
   if (!summary || summary.trim() === '') throw new TaskError('--summary is required')
@@ -83,6 +100,18 @@ export async function startTask(projectDir, { slug, route, summary, highStakes =
   const active = await currentTask(projectDir)
   if (active && !['done', 'blocked'].includes(active.status)) {
     throw new TaskError(`task ${active.id} is still ${active.status}; finish it (paacm task done), block it (paacm task block), or ask the human before starting another`)
+  }
+  // A new task has no approved tests yet, so starting one would let a change to
+  // the previous task's frozen files through without the human. While the latest
+  // task is blocked with such a change, the change is settled in that task.
+  const latest = await latestTask(projectDir)
+  if (latest && latest.status === 'blocked' && latest.testsApprovedAt) {
+    const changed = auditTask(projectDir, config ?? (await loadConfig(projectDir)), latest).violations.map((v) => v.path)
+    if (changed.length) {
+      throw new TaskError(
+        `task ${latest.id} is blocked, and these files frozen by its approved tests changed since: ${changed.slice(0, 10).join(', ')}. Resume it (paacm task resume ${latest.id}) to settle the change with the human (reopen-tests), or undo the change, before starting another task`,
+      )
+    }
   }
   const effectiveRoute = highStakes ? 'DEEP' : route
   const effectiveAutonomy = highStakes ? 'L1' : (autonomy ?? defaultAutonomy)
