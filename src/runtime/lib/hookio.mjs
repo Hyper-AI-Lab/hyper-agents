@@ -3,6 +3,7 @@
 // differ in event names (PascalCase vs camelCase) and in the response fields.
 import { realpathSync } from 'node:fs'
 import path from 'node:path'
+import { findProjectDir, sameRepository, worktreeRoot } from './project.mjs'
 
 export async function readHookInput({ timeoutMs = 5000 } = {}) {
   if (process.stdin.isTTY) return {}
@@ -36,10 +37,28 @@ export function detectTool(input) {
   return process.env.CURSOR_VERSION ? 'cursor' : 'claude'
 }
 
-export function projectDirFrom(input) {
+// The projects a hook acts on: `anchor`, the session's project (from the IDE's
+// project directory), and `primary`, the one the agent works in. The agent's
+// current directory (`cwd`) moves the primary project only into another
+// worktree of the anchor's repository (Claude Code keeps CLAUDE_PROJECT_DIR at
+// the original root in a worktree session while `cwd` follows the agent), never
+// into a sub-folder of the same worktree or into another repository. When the
+// session's folder is not in a git repository (a folder holding several
+// checkouts), the repository `cwd` lies in is the primary project.
+export function projectDirsFrom(input) {
   const candidates = [process.env.CLAUDE_PROJECT_DIR, process.env.CURSOR_PROJECT_DIR, Array.isArray(input.workspace_roots) ? input.workspace_roots[0] : undefined, input.cwd, process.cwd()]
-  return path.resolve(candidates.find((c) => typeof c === 'string' && c !== ''))
+  const anchor = findProjectDir(candidates.find((c) => typeof c === 'string' && c !== ''))
+  if (typeof input.cwd !== 'string' || input.cwd === '') return { primary: anchor, anchor }
+  const here = findProjectDir(input.cwd)
+  if (here === anchor) return { primary: anchor, anchor }
+  const anchorTree = worktreeRoot(anchor)
+  const hereTree = worktreeRoot(here)
+  if (anchorTree === null) return { primary: hereTree === null ? anchor : here, anchor }
+  const otherWorktree = hereTree !== null && hereTree !== anchorTree && sameRepository(here, anchor)
+  return { primary: otherWorktree ? here : anchor, anchor }
 }
+
+export const projectDirFrom = (input) => projectDirsFrom(input).primary
 
 // The real path of the longest existing prefix of an absolute path, with the rest
 // appended: symbolic links are resolved even for a file that does not exist yet.
@@ -68,6 +87,36 @@ export function toProjectPath(projectDir, filePath) {
   const rel = path.relative(root, abs)
   if (rel === '' || rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) return null
   return rel.split(path.sep).join('/')
+}
+
+// The project an edited file is judged by (`root`, whose configuration and task
+// apply) and the file's POSIX path there (`rel`), or null when the file is
+// outside every project the session covers. Projects are found by worktree,
+// never by a nested .agent/paacm.json, so creating one cannot set up a second
+// set of rules:
+//   - a file in the session project's own worktree (a submodule included) is
+//     judged by the session project, or by the worktree's root when it lies
+//     outside that project;
+//   - a file in another worktree of the same repository, next to it or nested
+//     in it, by the project at the same place in that worktree;
+//   - when the session's folder (`anchor`) is not in a git repository, a file in
+//     any checkout below it by that checkout's root.
+export function editLocation(projectDir, filePath, anchor = projectDir) {
+  if (typeof filePath !== 'string' || filePath === '') return null
+  const abs = realPath(path.resolve(projectDir, filePath))
+  const project = realPath(path.resolve(projectDir))
+  const fileTree = worktreeRoot(path.dirname(abs))
+  const projectTree = worktreeRoot(project)
+  const at = (root) => {
+    const rel = toProjectPath(root, abs)
+    return rel ? { root, rel } : null
+  }
+  if (fileTree !== null && projectTree !== null) {
+    if (fileTree === projectTree) return at(project) ?? at(fileTree)
+    if (sameRepository(fileTree, projectTree)) return at(path.join(fileTree, path.relative(projectTree, project))) ?? at(fileTree)
+  }
+  if (fileTree !== null && worktreeRoot(path.resolve(anchor)) === null) return at(fileTree)
+  return at(project)
 }
 
 // The target file of an edit or write tool call. Claude Code documents

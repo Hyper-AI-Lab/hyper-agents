@@ -1,11 +1,15 @@
 // Post-edit checks (Claude Code PostToolUse on edit tools, Cursor postToolUse on
 // Write). Runs the commands configured in .agent/paacm.json `postEdit` whose glob
 // matches the edited file, with `{file}` replaced by the file's path, and feeds
-// any failure back to the agent. Does nothing when no command matches.
+// any failure back to the agent. Does nothing when no command matches. When the
+// session's folder is not a git repository, it first marks the edited checkout,
+// so that a failing gate there holds the session's stop.
 import { spawnSync } from 'node:child_process'
 import { loadConfig } from '../lib/config.mjs'
 import { matchesAny } from '../lib/glob.mjs'
-import { detectTool, editTarget, emit, projectDirFrom, readHookInput, runHook, toProjectPath } from '../lib/hookio.mjs'
+import { detectTool, editLocation, editTarget, emit, projectDirsFrom, readHookInput, runHook } from '../lib/hookio.mjs'
+import { worktreeRoot } from '../lib/project.mjs'
+import { markEdited, sessionIdFrom } from '../lib/session.mjs'
 
 const TIMEOUT_MS = 120_000
 const quote = (p) => (process.platform === 'win32' ? `"${p.replace(/"/g, '""')}"` : `'${p.replace(/'/g, "'\\''")}'`)
@@ -13,21 +17,23 @@ const quote = (p) => (process.platform === 'win32' ? `"${p.replace(/"/g, '""')}"
 runHook(async () => {
   const input = await readHookInput()
   const tool = detectTool(input)
-  const projectDir = projectDirFrom(input)
+  const { primary, anchor } = projectDirsFrom(input)
   const done = () => {
     if (tool === 'cursor') emit({})
   }
   const target = editTarget(input.tool_input) ?? input.file_path
-  const rel = target ? toProjectPath(projectDir, target) : null
-  if (!rel || rel.startsWith('.agent/tasks/')) return done()
-  const config = await loadConfig(projectDir)
+  const location = target ? editLocation(primary, target, anchor) : null
+  if (!location || location.rel.startsWith('.agent/tasks/')) return done()
+  const { root, rel } = location
+  if (worktreeRoot(anchor) === null) await markEdited(root, sessionIdFrom(input))
+  const config = await loadConfig(root)
   const commands = config.postEdit.filter((e) => matchesAny(rel, [e.glob]))
   if (commands.length === 0) return done()
 
   const failures = []
   for (const entry of commands) {
     const command = entry.command.split('{file}').join(quote(rel))
-    const r = spawnSync(command, { cwd: projectDir, shell: true, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', timeout: TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 })
+    const r = spawnSync(command, { cwd: root, shell: true, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', timeout: TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 })
     if (r.status !== 0) {
       const output = `${r.stdout ?? ''}${r.stderr ?? ''}`.trim().split('\n').slice(-30).join('\n')
       failures.push(`\`${command}\` exited ${r.status ?? (r.error ? r.error.message : 'abnormally')}:\n${output}`)

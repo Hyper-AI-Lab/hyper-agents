@@ -1,77 +1,158 @@
 // Stop gate (Claude Code Stop, Cursor stop). The agent may not finish an
 // implementation while the gate fails. It may always stop to ask for approval
 // (before implementation), after `paacm task block`, or with a BLOCKED: report.
-import { GATE, recentGate, runGate } from '../lib/gate.mjs'
-import { changedSince, head, uncommittedPaths } from '../lib/git.mjs'
-import { detectTool, emit, projectDirFrom, readHookInput, runHook } from '../lib/hookio.mjs'
-import { changedThisSession, sessionIdFrom } from '../lib/session.mjs'
-import { currentTask } from '../lib/task.mjs'
+// An open task whose gate is green, or a STANDARD or DEEP task that changed files
+// without recording its phases, is nudged once; the next stop is let through, so
+// an agent waiting for the human is never held. A nudge is guidance, not a
+// failure: Claude Code gets it as additionalContext, which continues the turn
+// like a block (with the same stop_hook_active protection) but is not shown to
+// the user as a hook error. A failing gate blocks.
+//
+// The hook judges the project the agent works in and, when the agent moved into
+// another worktree, the session's own project too: leaving a worktree never
+// releases a failing gate. When the session's folder is not a git repository, it
+// also judges each checkout directly inside it that the session edited.
+import { loadConfig, tierAtLeast, tierForRoute } from '../lib/config.mjs'
+import { GATE, recentGate, runGate, worktreeFingerprint } from '../lib/gate.mjs'
+import { committedSince, head, uncommittedPaths } from '../lib/git.mjs'
+import { detectTool, emit, projectDirsFrom, readHookInput, runHook } from '../lib/hookio.mjs'
+import { isMissingTool } from '../lib/runner.mjs'
+import { referencePath } from '../lib/references.mjs'
+import { worktreeRoot } from '../lib/project.mjs'
+import { changedThisSession, editedCheckouts, sessionIdFrom } from '../lib/session.mjs'
+import { currentTask, writeState } from '../lib/task.mjs'
 
 const GATED = new Set(['implementing', 'verifying', 'reviewing'])
+const NUDGE_DEDUP_MS = 15_000
 const isTaskFile = (p) => p === '.agent/tasks' || p.startsWith('.agent/tasks/')
+const ALLOW = { kind: 'allow' }
+const block = (text) => ({ kind: 'block', text })
+const guide = (text) => ({ kind: 'guide', text })
+const WAITING = 'If you are waiting for the human (a question or an approval), say so in your answer and stop again.'
+
+// What finishing an open task still needs, given its route and phase.
+function finishSteps(projectDir, task) {
+  const deliver = `write REPORT.md and run \`paacm task done\` (${referencePath(projectDir, '09-deliver.md')})`
+  if (task.route === 'FAST') {
+    return ['verifying', 'reviewing'].includes(task.status) ? deliver : `record phase 7 with \`paacm task phase verifying\`, then ${deliver}`
+  }
+  if (task.status === 'reviewing') return deliver
+  return `review it first if you have not (\`paacm task phase reviewing\`, then ${referencePath(projectDir, '08-review.md')}), then ${deliver}`
+}
+
+const missingToolMessage = (label, details) =>
+  `PAACM gate could not run check ${label}: a command was not found.${details}\n\nThis is the environment, not the code, so do not change code to get around it. The task cannot pass the gate without the tool: run \`paacm task block --trigger 2 --reason "<the missing tool>"\` and end your turn with a BLOCKED: line that asks the human to install it.`
 
 runHook(async () => {
   const input = await readHookInput()
   const tool = detectTool(input)
-  const projectDir = projectDirFrom(input)
+  const { primary, anchor } = projectDirsFrom(input)
   const continuation = tool === 'claude' ? Boolean(input.stop_hook_active) : Number(input.loop_count ?? 0) > 0
-  const allow = () => {
+  const sessionId = sessionIdFrom(input)
+  const respond = (outcome) => {
+    if (outcome.kind === 'block') return tool === 'claude' ? emit({ decision: 'block', reason: outcome.text }) : emit({ followup_message: outcome.text })
+    if (outcome.kind === 'guide') return tool === 'claude' ? emit({ hookSpecificOutput: { hookEventName: 'Stop', additionalContext: outcome.text } }) : emit({ followup_message: outcome.text })
     if (tool === 'cursor') emit({})
   }
-  const block = (reason) => (tool === 'claude' ? emit({ decision: 'block', reason }) : emit({ followup_message: reason }))
 
-  if (tool === 'cursor' && input.status && input.status !== 'completed') return allow()
+  if (tool === 'cursor' && input.status && input.status !== 'completed') return respond(ALLOW)
   const lastMessage = typeof input.last_assistant_message === 'string' ? input.last_assistant_message : ''
-  if (/^\s*BLOCKED:/m.test(lastMessage)) return allow()
+  if (/^\s*BLOCKED:/m.test(lastMessage)) return respond(ALLOW)
 
-  const task = await currentTask(projectDir)
-  if (!task) {
-    // Without a session baseline, every uncommitted file is reported, worded so
-    // that it does not claim the agent made the change.
-    const sinceStart = await changedThisSession(projectDir, sessionIdFrom(input))
-    const changed = (sinceStart ?? uncommittedPaths(projectDir)).filter((p) => !isTaskFile(p))
-    if (changed.length && !continuation) {
+  // The decision for one project. `own` is the project the agent works in; only
+  // there are uncommitted files without a task worth a nudge.
+  async function decide(projectDir, own) {
+    const task = await currentTask(projectDir)
+    if (!task) {
+      if (!own) return ALLOW
+      // Without a session baseline, every uncommitted file is reported, worded so
+      // that it does not claim the agent made the change.
+      const sinceStart = await changedThisSession(projectDir, sessionId)
+      const changed = (sinceStart ?? uncommittedPaths(projectDir)).filter((p) => !isTaskFile(p))
+      if (!changed.length || continuation) return ALLOW
       const list = `${changed.slice(0, 5).join(', ')}${changed.length > 5 ? ', …' : ''}`
-      return block(
+      return guide(
         `PAACM: ${sinceStart ? `${changed.length} file(s) changed in this session` : `${changed.length} file(s) have uncommitted changes`} and no PAACM task is active (${list}). If this was a coding request, start a task with \`paacm task start\` and verify with \`paacm gate\` before finishing. If the user asked for these edits outside PAACM, or they are not yours, say so in your answer.`,
       )
     }
-    return allow()
-  }
-  if (task.status === 'blocked' || task.status === 'done') return allow()
+    if (task.status === 'blocked' || task.status === 'done') return ALLOW
 
-  const fastWithChanges = task.status === 'triaged' && task.route === 'FAST' && changedSince(projectDir, task.baseCommit).some((p) => !isTaskFile(p))
-  if (!GATED.has(task.status) && !fastWithChanges) return allow()
+    // A nudge is given once: never on a continuation, and not again when the same
+    // stop arrives twice (Cursor also runs the Claude Code hooks it imports). The
+    // state is read again before writing: a gate this hook just ran has recorded
+    // its result there, which the task read above does not have.
+    const nudge = async (kind, message) => {
+      if (continuation) return ALLOW
+      const fingerprint = worktreeFingerprint(projectDir)
+      const current = (await currentTask(projectDir)) ?? task
+      const last = current.lastNudge
+      if (last && last.kind === kind && last.fingerprint === fingerprint && Date.now() - Date.parse(last.at) < NUDGE_DEDUP_MS) return ALLOW
+      current.lastNudge = { kind, fingerprint, at: new Date().toISOString() }
+      await writeState(projectDir, current)
+      return guide(message)
+    }
 
-  const g = task.lastGate
-  const dirty = uncommittedPaths(projectDir).some((p) => !isTaskFile(p))
-  if (g && g.passed && g.head === head(projectDir) && !dirty && !g.dirty) return allow()
+    // Files the task changed: committed since its start, and uncommitted ones;
+    // with a session baseline, only uncommitted files that changed in this session,
+    // so the human's own work in progress does not count.
+    let changes = false
+    if (task.status === 'triaged') {
+      const sinceStart = own ? await changedThisSession(projectDir, sessionId) : null
+      const uncommitted = sinceStart ?? uncommittedPaths(projectDir)
+      changes = [...committedSince(projectDir, task.baseCommit), ...uncommitted].some((p) => !isTaskFile(p))
+    }
+    if (changes && task.route !== 'FAST') {
+      return nudge(
+        'phases',
+        `PAACM: task ${task.id} (${task.route}) is still triaged, but files outside the task folder changed. Follow the phases: record each one with \`paacm task phase <phase>\`, which names the reference to read, get the approvals they ask for, and verify with \`paacm gate\`. ${WAITING}`,
+      )
+    }
+    if (!GATED.has(task.status) && !changes) return ALLOW
 
-  const duplicate = recentGate(projectDir, task)
-  if (duplicate) {
-    if (duplicate.passed) return allow()
-    return block(`PAACM gate failed on this exact working tree a moment ago (check ${duplicate.failed}); see the previous gate message, fix the cause, then finish again.`)
-  }
+    const finish = () => nudge('finish', `PAACM: the gate is green, but task ${task.id} is still ${task.status}. If the work is complete, finish it: ${finishSteps(projectDir, task)}. ${WAITING}`)
 
-  const lines = []
-  const result = await runGate(projectDir, { log: (l) => lines.push(l) })
-  if (result.code === GATE.PASSED) return allow()
+    const config = await loadConfig(projectDir)
+    const required = tierForRoute(config, task)
+    const g = task.lastGate
+    const dirty = uncommittedPaths(projectDir).some((p) => !isTaskFile(p))
+    if (g && g.passed && g.head === head(projectDir) && !dirty && !g.dirty && tierAtLeast(g.tier, required)) return finish()
 
-  const log = lines.slice(-12).join('\n')
-  if (result.code === GATE.UNCONFIGURED || result.code === GATE.CONFIG) {
-    if (continuation) return allow()
+    const duplicate = recentGate(projectDir, task)
+    if (duplicate && tierAtLeast(duplicate.tier, required)) {
+      if (duplicate.passed) return finish()
+      if (duplicate.missingTool) return block(missingToolMessage(duplicate.failed, ' See the previous gate output.'))
+      return block(`PAACM gate failed on this exact working tree a moment ago (check ${duplicate.failed}); see the previous gate message, fix the cause, then finish again.`)
+    }
+
+    const lines = []
+    const result = await runGate(projectDir, { log: (l) => lines.push(l) })
+    if (result.code === GATE.PASSED) return finish()
+
+    const log = lines.slice(-12).join('\n')
+    if (result.code === GATE.UNCONFIGURED || result.code === GATE.CONFIG) {
+      if (continuation) return ALLOW
+      return guide(
+        `PAACM gate could not verify this task:\n${log}\n\nYou cannot fix this by changing code. List the missing checks under CHECKS NOT RUN in the report, and ask the human to configure .agent/checks.conf (or fix .agent/paacm.json). Use \`paacm task block --trigger 2 --reason "<what is missing>"\` if the task cannot be verified without it.`,
+      )
+    }
+
+    const last = result.results?.length ? result.results[result.results.length - 1] : null
+    const tail = last ? (last.outputTail || '').trim().split('\n').slice(-30).join('\n') : ''
+    if (last && isMissingTool(last)) return block(missingToolMessage(last.label, ` The check exited ${last.exitCode}.\n\n${log}${tail ? `\n\nLast output of the check:\n${tail}` : ''}`))
+    if (result.gateFailures >= result.retryCap) {
+      return block(
+        `PAACM gate failed ${result.gateFailures} times in a row; the retry cap (${result.retryCap}) is reached. Do not try another fix. Run \`paacm task block --trigger 5 --reason "<what still fails and why>"\`, write REPORT.md, and end your turn with a BLOCKED: line.\n\n${log}`,
+      )
+    }
     return block(
-      `PAACM gate could not verify this task:\n${log}\n\nYou cannot fix this by changing code. List the missing checks under CHECKS NOT RUN in the report, and ask the human to configure .agent/checks.conf (or fix .agent/paacm.json). Use \`paacm task block --trigger 2 --reason "<what is missing>"\` if the task cannot be verified without it.`,
+      `PAACM gate failed (attempt ${result.gateFailures} of ${result.retryCap}); you cannot finish yet.\n\n${log}${tail ? `\n\nLast output of the failing check:\n${tail}` : ''}\n\nFix the cause without editing tests, CI, .agent/checks.conf or hook files, then finish again. If the requirement and the tests conflict, use BLOCKED: trigger 4.`,
     )
   }
 
-  const tail = result.results?.length ? (result.results[result.results.length - 1].outputTail || '').trim().split('\n').slice(-30).join('\n') : ''
-  if (result.gateFailures >= result.retryCap) {
-    return block(
-      `PAACM gate failed ${result.gateFailures} times in a row; the retry cap (${result.retryCap}) is reached. Do not try another fix. Run \`paacm task block --trigger 5 --reason "<what still fails and why>"\`, write REPORT.md, and end your turn with a BLOCKED: line.\n\n${log}`,
-    )
+  const outcomes = [await decide(primary, true)]
+  if (anchor !== primary) outcomes.push(await decide(anchor, false))
+  if (worktreeRoot(anchor) === null) {
+    for (const dir of await editedCheckouts(anchor, sessionId)) if (dir !== primary) outcomes.push(await decide(dir, false))
   }
-  return block(
-    `PAACM gate failed (attempt ${result.gateFailures} of ${result.retryCap}); you cannot finish yet.\n\n${log}${tail ? `\n\nLast output of the failing check:\n${tail}` : ''}\n\nFix the cause without editing tests, CI, .agent/checks.conf or hook files, then finish again. If the requirement and the tests conflict, use BLOCKED: trigger 4.`,
-  )
+  respond(outcomes.find((o) => o.kind === 'block') ?? outcomes.find((o) => o.kind === 'guide') ?? ALLOW)
 })

@@ -12,7 +12,7 @@
    paacm task done
    ```
 
-   This refuses to close the task unless the latest gate passed at the current commit with no uncommitted changes since. If it refuses, go back to phase 7.
+   It refuses unless the task reached its last phase (`paacm task phase reviewing`; `verifying` is enough for FAST), the tests were approved, the latest gate passed at the route's tier at the current commit with no uncommitted changes since, and `REPORT.md` begins with `OUTCOME: done`. Each refusal says what is missing. If the gate is the problem, go back to phase 7. If the outcome is blocked, close the task with `paacm task block` instead and end your turn with a `BLOCKED:` line.
 3. **Update multi-session state:** flip `passes` to `true` in `features.json` only for features whose test steps passed in this session.
 4. **Give the report as your final answer**, in the same format. Put anything that needs the human's decision under NEEDS APPROVAL.
 5. **Pushing and pull requests:** push the branch or open a pull request only if the human asked for it or the autonomy level allows it (`autonomy.md`). The human decides the merge. Never merge your own change into a protected branch.

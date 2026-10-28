@@ -1,6 +1,7 @@
 // The project configuration file .agent/paacm.json: its schema, defaults and loading.
 import path from 'node:path'
 import { readJsonOrNull } from './fs.mjs'
+import { CASE_INSENSITIVE_FS, matchesAny } from './glob.mjs'
 
 export const CONFIG_PATH = '.agent/paacm.json'
 export const TIERS = ['quick', 'full', 'security']
@@ -35,16 +36,38 @@ export const DEFAULT_CONFIG = Object.freeze({
       '.mcp.json',
       '.vscode/**',
       '.github/workflows/**',
+      '.github/actions/**',
       '.gitlab-ci.yml',
       '.circleci/**',
-      '.agent/paacm.json',
-      '.agent/checks.conf',
+      '**/.agent/paacm.json',
+      '**/.agent/checks.conf',
       '.agent/paacm.lock.json',
       '.agent/extensions/**',
+      '.husky/**',
+      '.pre-commit-config.yaml',
+      'lefthook.*',
+      '.lefthook.*',
+      'lefthook-local.*',
+      '.lefthook-local.*',
     ],
   },
   postEdit: [],
 })
+
+// Whether a repository path is a protected test file, or protected
+// configuration. Case is ignored where the file system ignores it.
+export const isProtectedTest = (rel, config) => matchesAny(rel, config.protect.tests, { ignoreCase: CASE_INSENSITIVE_FS })
+export const isProtectedConfig = (rel, config) => matchesAny(rel, config.protect.config, { ignoreCase: CASE_INSENSITIVE_FS })
+
+// The tier the gate runs for a task by default, and the lowest tier that can
+// close it: gate.deepTier for DEEP, gate.tier otherwise.
+export function tierForRoute(config, state) {
+  if (state && state.route === 'DEEP') return config.gate.deepTier
+  return config.gate.tier
+}
+
+// Whether a tier includes another; the tiers are cumulative (quick, full, security).
+export const tierAtLeast = (tier, required) => TIERS.indexOf(tier) >= TIERS.indexOf(required)
 
 export function validateConfig(config) {
   const problems = []

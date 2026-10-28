@@ -1,11 +1,15 @@
 // Task state under .agent/tasks/: the current-task pointer, state.json, and the
 // append-only progress log. All writes are atomic.
-import { appendFile, mkdir, rm } from 'node:fs/promises'
+import { realpathSync } from 'node:fs'
+import { appendFile, mkdir, readdir, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { readJsonOrNull, readTextOrNull, stableJson, writeFileAtomic } from './fs.mjs'
-import { changedSince, diffSince, head, shortSha, uncommittedPaths } from './git.mjs'
+import { GIT_BUFFER, generatedPaths, git, head, shortSha, uncommittedPaths, workingTreeDiff } from './git.mjs'
+import { auditTask } from './audit.mjs'
+import { isProtectedTest, loadConfig, tierAtLeast, tierForRoute } from './config.mjs'
 import { readExtension, sectionOf } from './extensions.mjs'
-import { matchesAny } from './glob.mjs'
+import { worktreeRoot } from './project.mjs'
+import { referencePath } from './references.mjs'
 
 export const TASKS_DIR = '.agent/tasks'
 export const ROUTES = ['FAST', 'STANDARD', 'DEEP']
@@ -13,6 +17,12 @@ export const LEVELS = ['L0', 'L1', 'L2', 'L3']
 export const PHASES = ['specifying', 'exploring', 'planning', 'testing', 'implementing', 'verifying', 'reviewing']
 export const STATUSES = ['triaged', ...PHASES, 'done', 'blocked']
 const SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/
+// A work item: an issue number (123, #123), a tracker key (PROJ-123), a GitHub
+// reference (owner/repo#123) or an https URL. Printable ASCII only, because it
+// is shown to agents and reviewers.
+const REF_RE = /^(?:#?\d+|[A-Za-z][A-Za-z0-9_]*-\d+|[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+#\d+|https:\/\/[\x21-\x7e]+)$/
+
+export const validRef = (ref) => typeof ref === 'string' && ref.length <= 200 && REF_RE.test(ref)
 
 export class TaskError extends Error {}
 
@@ -60,21 +70,82 @@ export async function appendProgress(projectDir, id, text) {
   await appendFile(path.join(taskDir(projectDir, id), 'progress.md'), line)
 }
 
+// The most recently updated task of the worktree, or null.
+async function latestTask(projectDir) {
+  let latest = null
+  let entries = []
+  try {
+    entries = await readdir(tasksDir(projectDir), { withFileTypes: true })
+  } catch {
+    return null
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    const state = await readJsonOrNull(path.join(tasksDir(projectDir), entry.name, 'state.json')).catch(() => null)
+    if (state && state.updatedAt && (!latest || state.updatedAt > latest.updatedAt)) latest = state
+  }
+  return latest
+}
+
+const real = (p) => {
+  try {
+    return realpathSync.native(p)
+  } catch {
+    return path.resolve(p)
+  }
+}
+
+// The project at the same place in each other worktree of the repository.
+function otherWorktrees(projectDir) {
+  const tree = worktreeRoot(projectDir)
+  const r = tree ? git(projectDir, ['worktree', 'list', '--porcelain'], { allowFail: true }) : null
+  if (!r || !r.ok) return []
+  return r.stdout
+    .split('\n')
+    .filter((line) => line.startsWith('worktree '))
+    .map((line) => line.slice('worktree '.length))
+    .filter((other) => real(other) !== real(tree))
+    .map((other) => path.join(other, path.relative(tree, projectDir)))
+}
+
+// Refuses while a blocked task's frozen files are changed here. A new task has no
+// approved tests yet, so it would let such a change through without the human;
+// the change is settled in the blocked task. The tasks checked are the latest one
+// of this worktree (with `own`) and the latest one of each other worktree whose
+// approved test commit this HEAD contains: the refusal follows the commit, not
+// one .agent/tasks folder.
+async function refuseOverBlockedTask(projectDir, config, { own, before }) {
+  const dirs = [...(own ? [projectDir] : []), ...otherWorktrees(projectDir)]
+  for (const dir of dirs) {
+    const latest = await latestTask(dir)
+    if (!latest || latest.status !== 'blocked' || !latest.testsApprovedAt) continue
+    if (dir !== projectDir && !git(projectDir, ['merge-base', '--is-ancestor', latest.testsApprovedAt, 'HEAD'], { allowFail: true }).ok) continue
+    const changed = auditTask(projectDir, config, latest).violations.map((v) => v.path)
+    if (!changed.length) continue
+    const where = dir === projectDir ? '' : ` (in the worktree at ${dir})`
+    throw new TaskError(
+      `task ${latest.id}${where} is blocked, and these files frozen by its approved tests changed since: ${changed.slice(0, 10).join(', ')}. Resume it (paacm task resume ${latest.id}) to settle the change with the human (reopen-tests), or undo the change, before ${before}`,
+    )
+  }
+}
+
 async function setCurrent(projectDir, id) {
   const file = path.join(tasksDir(projectDir), 'CURRENT')
   if (id === null) await rm(file, { force: true })
   else await writeFileAtomic(file, `${id}\n`)
 }
 
-export async function startTask(projectDir, { slug, route, summary, highStakes = false, autonomy, defaultAutonomy = 'L1', date = new Date() }) {
+export async function startTask(projectDir, { slug, route, summary, highStakes = false, autonomy, ref, defaultAutonomy = 'L1', config, date = new Date() }) {
   if (!slug || !SLUG_RE.test(slug)) throw new TaskError('--slug must be lowercase letters, digits and hyphens')
   if (!ROUTES.includes(route)) throw new TaskError(`--route must be one of ${ROUTES.join(', ')}`)
   if (!summary || summary.trim() === '') throw new TaskError('--summary is required')
   if (autonomy !== undefined && !LEVELS.includes(autonomy)) throw new TaskError(`--autonomy must be one of ${LEVELS.join(', ')}`)
+  if (ref !== undefined && !validRef(ref)) throw new TaskError('--ref must be an issue number (123 or #123), a tracker key (PROJ-123), owner/repo#123 or an https URL, at most 200 characters')
   const active = await currentTask(projectDir)
   if (active && !['done', 'blocked'].includes(active.status)) {
     throw new TaskError(`task ${active.id} is still ${active.status}; finish it (paacm task done), block it (paacm task block), or ask the human before starting another`)
   }
+  await refuseOverBlockedTask(projectDir, config ?? (await loadConfig(projectDir)), { own: true, before: 'starting another task' })
   const effectiveRoute = highStakes ? 'DEEP' : route
   const effectiveAutonomy = highStakes ? 'L1' : (autonomy ?? defaultAutonomy)
   const id = `${date.toISOString().slice(0, 10)}-${slug}`
@@ -89,6 +160,7 @@ export async function startTask(projectDir, { slug, route, summary, highStakes =
   const state = {
     id,
     summary: summary.trim(),
+    ref: ref ?? null,
     route: effectiveRoute,
     highStakes: Boolean(highStakes),
     autonomy: effectiveAutonomy,
@@ -109,7 +181,7 @@ export async function startTask(projectDir, { slug, route, summary, highStakes =
   await appendProgress(
     projectDir,
     id,
-    `started: route ${effectiveRoute}${highStakes ? ' high-stakes' : ''}, autonomy ${effectiveAutonomy}, base ${shortSha(base) ?? 'none'} — ${state.summary}${notes.length ? ` (${notes.join('; ')})` : ''}`,
+    `started: route ${effectiveRoute}${highStakes ? ' high-stakes' : ''}, autonomy ${effectiveAutonomy}, base ${shortSha(base) ?? 'none'}${state.ref ? `, work item ${state.ref}` : ''} — ${state.summary}${notes.length ? ` (${notes.join('; ')})` : ''}`,
   )
   await setCurrent(projectDir, id)
   return state
@@ -144,15 +216,31 @@ export async function approveTests(projectDir, config) {
   const state = await requireCurrent(projectDir)
   const sha = head(projectDir)
   if (!sha) throw new TaskError('the repository has no commits yet; commit the tests first')
-  const dirtyTests = uncommittedPaths(projectDir).filter((p) => matchesAny(p, config.protect.tests))
+  const dirtyTests = uncommittedPaths(projectDir).filter((p) => isProtectedTest(p, config))
   if (dirtyTests.length) {
     throw new TaskError(`commit the tests before approving them; uncommitted test files: ${dirtyTests.slice(0, 10).join(', ')}`)
   }
+  // A new baseline must not absorb a change to the frozen files: that would let
+  // the writer edit an approved test (for example through the shell) and approve
+  // its own edit. Such a change needs reopen-tests, which the human confirms.
+  if (state.testsApprovedAt) {
+    const changed = auditTask(projectDir, config, state).violations.map((v) => v.path)
+    if (changed.length) {
+      throw new TaskError(
+        `the tests were approved at ${shortSha(state.testsApprovedAt)} and these frozen files changed since: ${changed.slice(0, 10).join(', ')}. A new baseline needs the human: after they approve the change in the conversation, run paacm task reopen-tests --reason "<the approved change>" (the IDE asks them to confirm), then paacm task approve-tests`,
+      )
+    }
+  }
+  // Another worktree's blocked task covers a task started there before the change
+  // was merged here.
+  await refuseOverBlockedTask(projectDir, config, { own: false, before: 'approving tests here' })
   const previous = state.testsApprovedAt
+  const from = state.status
   state.testsApprovedAt = sha
   state.gateFailures = 0
+  if (from === 'testing') state.status = 'implementing'
   await writeState(projectDir, state)
-  await appendProgress(projectDir, state.id, `tests approved at ${shortSha(sha)}${previous ? ` (previous baseline ${shortSha(previous)})` : ''}`)
+  await appendProgress(projectDir, state.id, `tests approved at ${shortSha(sha)}${previous ? ` (previous baseline ${shortSha(previous)})` : ''}${from === 'testing' ? '; phase: testing → implementing' : ''}`)
   return state
 }
 
@@ -202,8 +290,22 @@ function isTaskFile(p) {
   return p === '.agent/tasks' || p.startsWith('.agent/tasks/')
 }
 
-export async function finishTask(projectDir) {
+// Closes the task. It must have reached its last phase (8 for STANDARD and DEEP,
+// 7 for FAST), have approved tests, a gate that passed at the route's tier at the
+// current commit with nothing uncommitted, and a REPORT.md whose OUTCOME is done.
+export async function finishTask(projectDir, config) {
   const state = await requireCurrent(projectDir)
+  const ref = (file) => referencePath(projectDir, file)
+  if (state.route === 'FAST' ? !['verifying', 'reviewing'].includes(state.status) : state.status !== 'reviewing') {
+    throw new TaskError(
+      state.route === 'FAST'
+        ? `task ${state.id} is ${state.status}; a FAST task is done after phase 7, verify: run paacm task phase verifying and paacm gate (${ref('07-verify.md')})`
+        : `task ${state.id} is ${state.status}; a ${state.route} task is done after phase 8, review: run paacm task phase reviewing, then follow ${ref('08-review.md')}`,
+    )
+  }
+  if (!state.testsApprovedAt) {
+    throw new TaskError(`the tests were never approved, so the audit has no baseline: commit the tests and run paacm task approve-tests (${ref('05-tests-first.md')}), then paacm gate`)
+  }
   const sha = head(projectDir)
   const gate = state.lastGate
   if (!gate || !gate.passed) throw new TaskError('the latest gate did not pass; run paacm gate and fix what it reports')
@@ -211,6 +313,19 @@ export async function finishTask(projectDir) {
   const dirty = uncommittedPaths(projectDir).filter((p) => !isTaskFile(p))
   if (dirty.length) throw new TaskError(`uncommitted changes since the gate: ${dirty.slice(0, 10).join(', ')}; commit them and run paacm gate again`)
   if (gate.dirty) throw new TaskError('the gate passed on uncommitted changes; commit them and run paacm gate again')
+  const required = tierForRoute(config, state)
+  if (!tierAtLeast(gate.tier, required)) throw new TaskError(`the last gate ran the ${gate.tier} tier; a ${state.route} task needs ${required} or higher: run paacm gate`)
+  const reportRel = `${TASKS_DIR}/${state.id}/REPORT.md`
+  const report = await readTextOrNull(path.join(taskDir(projectDir, state.id), 'REPORT.md'))
+  if (report === null) throw new TaskError(`write ${reportRel} from the report template first (${ref('09-deliver.md')})`)
+  const outcome = (/^\s*OUTCOME:[ \t]*(.*)$/m.exec(report)?.[1] ?? '').trim()
+  if (outcome === '' || outcome.startsWith('<')) {
+    throw new TaskError(`${reportRel} has no filled-in OUTCOME line; begin it with "OUTCOME: done — <one sentence>" (${ref('09-deliver.md')})`)
+  }
+  if (/^blocked\b/i.test(outcome)) {
+    throw new TaskError(`${reportRel} says blocked; close a blocked task with paacm task block --trigger <1-7> --reason "<text>" and end your turn with a BLOCKED: line`)
+  }
+  if (!/^done\b/i.test(outcome)) throw new TaskError(`the OUTCOME line of ${reportRel} must begin with "done" (it says "${outcome.slice(0, 40)}")`)
   state.status = 'done'
   await writeState(projectDir, state)
   await appendProgress(projectDir, state.id, `done at ${shortSha(sha)}`)
@@ -218,22 +333,162 @@ export async function finishTask(projectDir) {
   return state
 }
 
-// Writes review-input.md for the reviewer: the diff since baseCommit, the
-// acceptance criteria (or summary) and the latest gate result.
-export async function writeReviewInput(projectDir) {
+// The reviewer reads review-input.md and has no shell. Diffs of generated files,
+// and of files whose diff alone exceeds SEPARATE_BYTES, go to separate files in
+// review-diffs/; then the largest remaining ones, until the diff in review-input.md
+// fits DIFF_BUDGET.
+const SEPARATE_BYTES = 64 * 1024
+const DIFF_BUDGET = 512 * 1024
+// Task files the evidence list leaves out: state, the writer's own documents,
+// review input, the gate log (named separately) and supporting data (untrusted).
+const NOT_EVIDENCE = new Set(['state.json', 'progress.md', 'SPEC.md', 'PLAN.md', 'REPORT.md', 'features.json', 'review-input.md', 'gate.log'])
+const bytes = (text) => Buffer.byteLength(text, 'utf8')
+
+// The regular files under a task folder, as sorted POSIX paths. Symbolic links
+// and folders that cannot be read are skipped, so one of them never hides the
+// evidence the writer saved.
+async function taskFiles(dir, rel = '') {
+  let entries
+  try {
+    entries = await readdir(rel ? path.join(dir, ...rel.split('/')) : dir, { withFileTypes: true })
+  } catch {
+    return []
+  }
+  entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+  const files = []
+  for (const entry of entries) {
+    const child = rel ? `${rel}/${entry.name}` : entry.name
+    if (entry.isDirectory()) files.push(...(await taskFiles(dir, child)))
+    else if (entry.isFile()) files.push(child)
+  }
+  return files
+}
+
+// A C-style quoted string at the start of `s` (as git quotes unusual file
+// names), decoded, or null.
+function unquote(s) {
+  const escapes = { a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13, '"': 34, '\\': 92 }
+  const bytes = []
+  for (let i = 1; i < s.length; i++) {
+    const c = s[i]
+    if (c === '"') return Buffer.from(bytes).toString('utf8')
+    if (c !== '\\') {
+      bytes.push(...Buffer.from(c, 'utf8'))
+      continue
+    }
+    const n = s[++i]
+    if (n in escapes) bytes.push(escapes[n])
+    else if (/[0-7]/.test(n ?? '')) {
+      bytes.push(Number.parseInt(s.slice(i, i + 3), 8))
+      i += 2
+    } else return null
+  }
+  return null
+}
+
+// The file a "diff --git a/<path> b/<path>" header names; without renames both
+// paths are the same. Null when the header cannot be read.
+function headerPath(header) {
+  const rest = header.slice('diff --git '.length)
+  if (rest.startsWith('"')) {
+    const p = unquote(rest)
+    return p && p.startsWith('a/') ? p.slice(2) : null
+  }
+  const half = (rest.length - 5) / 2
+  const p = rest.slice(2, 2 + half)
+  return Number.isInteger(half) && rest === `a/${p} b/${p}` ? p : null
+}
+
+// The diff's sections grouped by file (a file whose type changed has two), or
+// null when a header cannot be read.
+function sectionsByPath(diff) {
+  const byPath = new Map()
+  for (const section of diff.split(/^(?=diff --git )/m)) {
+    if (section === '') continue
+    const end = section.indexOf('\n')
+    const p = headerPath(end === -1 ? section : section.slice(0, end))
+    if (p === null) return null
+    byPath.set(p, (byPath.get(p) ?? '') + section)
+  }
+  return byPath
+}
+
+// A code fence longer than any run of backticks in the text, so the text cannot
+// close it early.
+function fenceFor(text) {
+  let longest = 0
+  for (const m of text.matchAll(/`+/g)) if (m[0].length > longest) longest = m[0].length
+  return '`'.repeat(Math.max(3, longest + 1))
+}
+
+// Writes review-input.md for the reviewer: the requirements, the evidence (the
+// latest gate and its log, the configuration warnings, files the writer saved
+// for reviewers), the changed files, the project's reviewer checklist and the
+// diff since baseCommit, new untracked files included.
+export async function writeReviewInput(projectDir, config) {
   const state = await requireCurrent(projectDir)
   const dir = taskDir(projectDir, state.id)
+  const inTask = (rel) => `${TASKS_DIR}/${state.id}/${rel}`
   const spec = await readTextOrNull(path.join(dir, 'SPEC.md'))
   let requirements = `Task summary: ${state.summary}`
   if (spec) {
     const m = /^##\s*6\.?\s*Acceptance criteria\s*\n([\s\S]*?)(?=^##\s|$(?![\s\S]))/im.exec(spec)
     requirements = m ? `Acceptance criteria (from SPEC.md):\n\n${m[1].trim()}` : `Specification:\n\n${spec.trim()}`
   }
-  const changed = changedSince(projectDir, state.baseCommit).filter((p) => !isTaskFile(p))
-  const diff = diffSince(projectDir, state.baseCommit)
-  const gate = state.lastGate
-    ? `Latest gate: tier ${state.lastGate.tier}, ${state.lastGate.passed ? 'passed' : `failed (${state.lastGate.failed})`}, at ${shortSha(state.lastGate.head)}${state.lastGate.dirty ? ' with uncommitted changes' : ''}, ${state.lastGate.at}`
-    : 'The gate has not been run for this task.'
+
+  let change
+  try {
+    change = workingTreeDiff(projectDir, state.baseCommit)
+  } catch (error) {
+    if (error && error.code === 'ENOBUFS') {
+      throw new TaskError(`the diff since ${shortSha(state.baseCommit) ?? 'the empty tree'} is larger than ${GIT_BUFFER / 1024 / 1024} MiB, too large to prepare for a review; ask the human how to split the change`)
+    }
+    throw error
+  }
+  const byPath = sectionsByPath(change.diff)
+  const split = byPath !== null && byPath.size === change.files.length && change.files.every((f) => byPath.has(f.path))
+  const generated = generatedPaths(projectDir, change.files.map((f) => f.path))
+  const entries = change.files.map((f) => ({ ...f, section: split ? byPath.get(f.path) : '', reason: null })).filter((e) => !isTaskFile(e.path))
+  if (split) {
+    for (const e of entries) {
+      if (generated.has(e.path)) e.reason = 'generated'
+      else if (bytes(e.section) > SEPARATE_BYTES) e.reason = 'large'
+    }
+    let size = entries.filter((e) => !e.reason).reduce((n, e) => n + bytes(e.section), 0)
+    for (const e of entries.filter((x) => !x.reason).sort((a, b) => bytes(b.section) - bytes(a.section))) {
+      if (size <= DIFF_BUDGET) break
+      e.reason = 'over the size budget'
+      size -= bytes(e.section)
+    }
+  }
+  const diffsDir = path.join(dir, 'review-diffs')
+  await rm(diffsDir, { recursive: true, force: true })
+  const separate = entries.filter((e) => e.reason)
+  for (const [i, e] of separate.entries()) {
+    e.file = inTask(`review-diffs/${String(i + 1).padStart(3, '0')}.diff`)
+    await writeFileAtomic(path.join(diffsDir, path.basename(e.file)), e.section)
+  }
+  const stats = (e) => (e.binary ? 'binary' : `+${e.added} −${e.deleted}`)
+  const diff = split ? entries.filter((e) => !e.reason).map((e) => e.section).join('') : change.diff
+  const fence = fenceFor(diff)
+
+  const evidence = [
+    state.lastGate
+      ? `Latest gate: tier ${state.lastGate.tier}, ${state.lastGate.passed ? 'passed' : `failed (${state.lastGate.failed})`}, at ${shortSha(state.lastGate.head)}${state.lastGate.dirty ? ' with uncommitted changes' : ''}, ${state.lastGate.at}`
+      : 'The gate has not been run for this task.',
+  ]
+  if (await readTextOrNull(path.join(dir, 'gate.log')) !== null) evidence.push(`Full output: ${inTask('gate.log')}`)
+  const warnings = auditTask(projectDir, config, state).warnings
+  if (warnings.length) {
+    evidence.push(
+      '',
+      'Protected configuration changed since the task started (the report must say who approved each change, or where a merged one was reviewed):',
+      ...warnings.map((w) => `- ${w.path}: protected configuration changed in this task${w.origin === 'merge' ? ', through a merge' : ''}`),
+    )
+  }
+  const saved = (await taskFiles(dir)).filter((p) => !NOT_EVIDENCE.has(p) && !p.startsWith('inputs/') && !p.startsWith('review-diffs/'))
+  if (saved.length) evidence.push('', 'Files the writer saved for reviewers (read each one):', ...saved.map((p) => `- ${inTask(p)}`))
+
   const checklist = sectionOf(await readExtension(projectDir, '08-review'), 'Reviewer checklist')
   const text = [
     `# Review input: ${state.id}`,
@@ -242,22 +497,28 @@ export async function writeReviewInput(projectDir) {
     '',
     '## Requirements',
     '',
+    ...(state.ref ? [`Work item: ${state.ref}`, ''] : []),
     requirements,
     '',
     '## Evidence',
     '',
-    gate,
+    ...evidence,
     '',
     '## Changed files',
     '',
-    changed.length ? changed.map((p) => `- ${p}`).join('\n') : '(none)',
+    entries.length ? entries.map((e) => `- ${e.path} (${stats(e)})`).join('\n') : '(none)',
+    ...(change.skipped.length ? ['', 'These paths could not be added to the review, so their changes are not in it:', ...change.skipped.map((m) => `- ${m}`)] : []),
     '',
     ...(checklist ? ['## Project reviewer checklist', '', 'Check each item against the diff as well, and report a violated item as a finding.', '', checklist, ''] : []),
+    ...(separate.length
+      ? ['## Diffs in separate files', '', 'These files are not in the diff below. Read each diff file; a generated file is reviewed for whether it should change at all.', '', ...separate.map((e) => `- ${e.path} (${stats(e)}, ${e.reason}): ${e.file}`), '']
+      : []),
     '## Diff',
     '',
-    '```diff',
+    ...(split ? [] : ['The diff could not be split per file, so it is shown whole.', '']),
+    `${fence}diff`,
     diff.trimEnd(),
-    '```',
+    fence,
     '',
   ].join('\n')
   const file = path.join(dir, 'review-input.md')

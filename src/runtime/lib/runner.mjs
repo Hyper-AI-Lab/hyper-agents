@@ -64,6 +64,17 @@ export function runOne(projectDir, check, { timeoutSec, sink } = {}) {
   })
 }
 
+// Whether a check failed because its shell could not find a command: exit 127
+// from a POSIX shell (also reported when the shell itself cannot start). On
+// Windows, `cmd /c` exits 1 and says the command "is not recognized" (9009 is
+// what a batch file sees); cmd prints that in the system's language, and only
+// the English message is recognized.
+export function isMissingTool(result) {
+  if (result.exitCode === 127) return true
+  if (process.platform !== 'win32') return false
+  return result.exitCode === 9009 || (result.exitCode === 1 && /is not recognized as an internal or external command/.test(result.outputTail ?? ''))
+}
+
 // Runs every check of the mode's tiers in manifest order and stops at the first
 // failure. `log` receives one line per event (RUN, PASS, FAIL, summary).
 export async function runChecks(projectDir, checks, mode, { timeoutSec, sink, log = () => {} } = {}) {
@@ -79,6 +90,9 @@ export async function runChecks(projectDir, checks, mode, { timeoutSec, sink, lo
       log(`PASS [${check.tier}] ${check.label} (${secs}s)`)
     } else {
       log(`FAIL [${check.tier}] ${check.label} exit ${r.exitCode}${r.timedOut ? ` (timed out after ${timeoutSec}s)` : ''} (${secs}s)`)
+      if (isMissingTool(r)) {
+        log(`HINT [${check.tier}] ${check.label}: a command was not found (exit ${r.exitCode}). This is the environment, not the code: do not change code to get around it. Without the tool the gate cannot pass, so list the check under CHECKS NOT RUN and stop with BLOCKED: trigger 2 (paacm task block --trigger 2) to ask the human to install it.`)
+      }
       break
     }
   }

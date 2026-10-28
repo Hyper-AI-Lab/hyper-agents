@@ -6,7 +6,7 @@ import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { test } from 'node:test'
-import { cli, commitAll, HOOKS, hook, read, repo, runtime, tempDir, writeFiles } from './helpers.mjs'
+import { cli, commitAll, HOOKS, hook, read, repo, runtime, stopGuidance, tempDir, writeFiles } from './helpers.mjs'
 
 const pass = 'node -e "process.exit(0)"'
 const fail = 'node -e "process.exit(1)"'
@@ -79,7 +79,8 @@ test('stop gate: Claude Code is blocked while the gate fails and released when i
   assert.equal(stop({ last_assistant_message: 'BLOCKED: trigger 5 — unit fails' }).json, null, 'a BLOCKED report may always stop')
   await writeFiles(dir, { '.agent/checks.conf': `quick|unit|${pass}\n` })
   commitAll(dir)
-  assert.equal(stop().json, null)
+  assert.match(stopGuidance(stop()), /gate is green, but task .* is still implementing/, 'released from the gate, then nudged once to finish')
+  assert.equal(stop({ stop_hook_active: true }).json, null)
 })
 
 test('stop gate: at the retry cap the agent is told to block instead of trying again', async (t) => {
@@ -112,7 +113,7 @@ test('stop gate: an unconfigured tier blocks once, then lets the agent report it
   runtime(dir, 'task', 'start', '--slug', 'u', '--route', 'DEEP', '--summary', 'x')
   runtime(dir, 'task', 'phase', 'implementing')
   const first = hook('stop-gate', { hook_event_name: 'Stop', stop_hook_active: false }, { projectDir: dir })
-  assert.match(first.json.reason, /could not verify this task[\s\S]*tier\(s\) full have no checks/)
+  assert.match(stopGuidance(first), /could not verify this task[\s\S]*tier\(s\) full have no checks/)
   assert.equal(hook('stop-gate', { hook_event_name: 'Stop', stop_hook_active: true }, { projectDir: dir }).json, null)
 })
 
@@ -125,11 +126,11 @@ test('stop gate without a task reports only files changed since the session star
   const stop = (extra = {}) => hook('stop-gate', { hook_event_name: 'Stop', session_id: id, stop_hook_active: false, ...extra }, { projectDir: dir })
   assert.equal(stop().json, null, 'pre-existing changes are not the agent’s')
   await writeFiles(dir, { 'src/b.js': 'new\n' })
-  assert.match(stop().json.reason, /1 file\(s\) changed in this session and no PAACM task is active \(src\/b\.js\)/)
+  assert.match(stopGuidance(stop()), /1 file\(s\) changed in this session and no PAACM task is active \(src\/b\.js\)/)
   hook('session-start', { hook_event_name: 'SessionStart', session_id: id, source: 'compact' }, { projectDir: dir })
-  assert.match(stop().json.reason, /src\/b\.js/, 'a compacted session keeps its first baseline')
+  assert.match(stopGuidance(stop()), /src\/b\.js/, 'a compacted session keeps its first baseline')
   assert.equal(stop({ stop_hook_active: true }).json, null)
-  assert.match(stop({ session_id: sessionId() }).json.reason, /have uncommitted changes/, 'without a baseline every change is listed')
+  assert.match(stopGuidance(stop({ session_id: sessionId() })), /have uncommitted changes/, 'without a baseline every change is listed')
 })
 
 test('session start: Claude Code gets the core rules only when AGENTS.md has no PAACM block', async (t) => {

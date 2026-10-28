@@ -1,5 +1,6 @@
 // Shared helpers for the test suites: temporary git repositories, running the
 // CLI and the hook scripts as the IDEs do, and capturing output.
+import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
@@ -76,10 +77,11 @@ export function commitAll(dir, message = 'change') {
 // The environment for child processes, without the IDE's project variables, so
 // that a test never acts on the repository it runs in.
 function cleanEnv(extra = {}) {
-  const env = { ...process.env, ...GIT_ENV, ...extra }
+  const env = { ...process.env, ...GIT_ENV }
   delete env.CLAUDE_PROJECT_DIR
   delete env.CURSOR_PROJECT_DIR
   delete env.CURSOR_VERSION
+  Object.assign(env, extra)
   for (const [k, v] of Object.entries(extra)) if (v === undefined) delete env[k]
   return env
 }
@@ -103,6 +105,16 @@ export function hook(name, payload, { projectDir, env = {} } = {}) {
   let json = null
   if (r.stdout.trim()) json = JSON.parse(r.stdout)
   return { ...r, json }
+}
+
+// The guidance a Claude Code Stop hook gives without blocking: additionalContext
+// keeps the conversation going and, unlike decision "block", is not shown to
+// the user as a hook error.
+export function stopGuidance(r) {
+  assert.ok(r.json, 'the stop hook answered')
+  assert.equal(r.json.decision, undefined, 'guidance, not a block')
+  assert.equal(r.json.hookSpecificOutput?.hookEventName, 'Stop')
+  return r.json.hookSpecificOutput.additionalContext
 }
 
 // An io object for in-process command functions.

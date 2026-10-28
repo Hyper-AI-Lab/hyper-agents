@@ -6,13 +6,14 @@
 import path from 'node:path'
 import { auditTask } from './audit.mjs'
 import { MANIFEST_PATH, missingTiers, parseManifest } from './checks.mjs'
-import { loadConfig, TIERS } from './config.mjs'
-import { readTextOrNull, sha256 } from './fs.mjs'
+import { loadConfig, TIERS, tierForRoute } from './config.mjs'
+import { readTextOrNull, sha256, writeFileAtomic } from './fs.mjs'
 import { git, head, uncommittedPaths } from './git.mjs'
-import { runChecks } from './runner.mjs'
-import { currentTask, writeState } from './task.mjs'
+import { isMissingTool, runChecks } from './runner.mjs'
+import { currentTask, TASKS_DIR, taskDir, writeState } from './task.mjs'
 
 export const GATE = { PASSED: 0, FAILED: 1, CONFIG: 2, UNCONFIGURED: 3, PROTECTED: 4 }
+const LOG_LIMIT = 8 * 1024 * 1024
 
 export async function loadChecks(projectDir) {
   const text = await readTextOrNull(path.join(projectDir, ...MANIFEST_PATH.split('/')))
@@ -40,10 +41,7 @@ export function recentGate(projectDir, state, withinMs = 15_000) {
   return g.fingerprint === worktreeFingerprint(projectDir) ? g : null
 }
 
-export function tierForRoute(config, state) {
-  if (state && state.route === 'DEEP') return config.gate.deepTier
-  return config.gate.tier
-}
+export { tierForRoute }
 
 export async function runGate(projectDir, { tier, log = () => {}, sink } = {}) {
   let config
@@ -60,9 +58,41 @@ export async function runGate(projectDir, { tier, log = () => {}, sink } = {}) {
     return { code: GATE.CONFIG, error: `unknown tier "${tier}"` }
   }
   const state = await currentTask(projectDir)
-  const effectiveTier = tier ?? tierForRoute(config, state)
+  // With a task, the whole run (the gate's lines and every check's output) is
+  // also saved as .agent/tasks/<task>/gate.log, for the writer, the reviewer and
+  // the report; the console can then stay short (paacm gate --quiet). Only the
+  // last LOG_LIMIT characters are kept, so a check that prints without end
+  // cannot exhaust the memory of the gate (or of the stop hook running it).
+  let transcript = ''
+  let dropped = false
+  const keep = (text) => {
+    transcript += text
+    if (transcript.length > 2 * LOG_LIMIT) {
+      transcript = transcript.slice(-LOG_LIMIT)
+      dropped = true
+    }
+  }
+  const userLog = log
+  const userSink = sink
+  log = (line) => {
+    keep(`${line}\n`)
+    userLog(line)
+  }
+  sink = (text) => {
+    keep(text)
+    if (userSink) userSink(text)
+  }
+  const saveLog = async () => {
+    if (!state) return
+    log(`Full output: ${TASKS_DIR}/${state.id}/gate.log`)
+    const cut = dropped || transcript.length > LOG_LIMIT
+    const text = cut ? `[… earlier output dropped; the last ${LOG_LIMIT} characters follow …]\n${transcript.slice(-LOG_LIMIT)}` : transcript
+    await writeFileAtomic(path.join(taskDir(projectDir, state.id), 'gate.log'), text)
+  }
+  const requiredTier = tierForRoute(config, state)
+  const effectiveTier = tier ?? requiredTier
   const audit = auditTask(projectDir, config, state)
-  const record = async (passed, failed) => {
+  const record = async (passed, failed, missingTool = false) => {
     if (!state) return null
     state.gateFailures = passed ? 0 : (state.gateFailures ?? 0) + 1
     state.lastGate = {
@@ -71,6 +101,7 @@ export async function runGate(projectDir, { tier, log = () => {}, sink } = {}) {
       tier: effectiveTier,
       passed,
       failed,
+      ...(missingTool ? { missingTool: true } : {}),
       dirty: uncommittedPaths(projectDir).some((p) => !p.startsWith('.agent/tasks/')),
       fingerprint: worktreeFingerprint(projectDir),
     }
@@ -78,28 +109,38 @@ export async function runGate(projectDir, { tier, log = () => {}, sink } = {}) {
     return state.gateFailures
   }
 
-  for (const w of audit.warnings) log(`WARN protected configuration changed in this task: ${w.path} (the report must state who approved it)`)
+  for (const w of audit.warnings) {
+    log(
+      w.origin === 'merge'
+        ? `WARN protected configuration changed in this task, through a merge: ${w.path} (the report must state where it was reviewed or who approved it)`
+        : `WARN protected configuration changed in this task: ${w.path} (the report must state who approved it)`,
+    )
+  }
   if (audit.violations.length) {
     for (const v of audit.violations) log(`PROTECTED ${v.path}${v.detail ? `: ${v.detail}` : ' changed after the tests were approved'}`)
-    log('GATE FAILED: protected test files or the gate configuration changed after the tests were approved. Undo those edits, or stop with BLOCKED: trigger 4 if the change is needed; after the human approves it, run paacm task approve-tests again.')
+    log('GATE FAILED: protected test files or the gate configuration changed after the tests were approved. Undo those edits, or stop with BLOCKED: trigger 4 if the change is needed. After the human approves it, run paacm task reopen-tests --reason "<the approved change>" (the IDE asks them to confirm), commit the change, then run paacm task approve-tests.')
     const failures = await record(false, 'protected-paths')
-    return { code: GATE.PROTECTED, tier: effectiveTier, audit, results: [], gateFailures: failures, retryCap: config.gate.retryCap, task: state }
+    await saveLog()
+    return { code: GATE.PROTECTED, tier: effectiveTier, requiredTier, audit, results: [], gateFailures: failures, retryCap: config.gate.retryCap, task: state }
   }
 
   const missing = missingTiers(checks, effectiveTier)
   if (missing.length) {
     log(`UNCONFIGURED: tier(s) ${missing.join(', ')} have no checks in ${MANIFEST_PATH}. Report them under CHECKS NOT RUN and ask the human to configure them.`)
-    return { code: GATE.UNCONFIGURED, tier: effectiveTier, audit, missing, results: [], gateFailures: state?.gateFailures ?? 0, retryCap: config.gate.retryCap, task: state }
+    await saveLog()
+    return { code: GATE.UNCONFIGURED, tier: effectiveTier, requiredTier, audit, missing, results: [], gateFailures: state?.gateFailures ?? 0, retryCap: config.gate.retryCap, task: state }
   }
 
   const run = await runChecks(projectDir, checks, effectiveTier, { timeoutSec: config.checks.timeoutSec, sink, log })
-  const failures = await record(run.passed, run.failed)
+  const failures = await record(run.passed, run.failed, run.results.some((r) => r.exitCode !== 0 && isMissingTool(r)))
   if (!run.passed && failures !== null && failures >= config.gate.retryCap) {
     log(`RETRY CAP REACHED: ${failures} consecutive failures. Stop trying; run paacm task block --trigger 5 --reason "<what fails>" and end your turn with BLOCKED.`)
   }
+  await saveLog()
   return {
     code: run.passed ? GATE.PASSED : GATE.FAILED,
     tier: effectiveTier,
+    requiredTier,
     audit,
     results: run.results,
     failed: run.failed,

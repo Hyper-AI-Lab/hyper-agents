@@ -13,7 +13,7 @@ If `.agent/extensions/08-review.md` exists, read it first. It may name more revi
 1. **Establish what the change is supposed to do.** Read the request, the linked issue or specification, and the pull request description and discussion. Read the commit history before the diff: commits and replies often record fixes, reverts and accepted trade-offs that the final diff alone hides.
 2. **Get the diff** against its base. For a pull request use the hosting tool's diff or `git diff <base>...<head>`; for a local branch use `git diff --merge-base <base>`.
 3. **Collect the evidence:** the CI results, or run `paacm check --tier quick` (and `--tier full` if configured) on the change's head. Quote commands and exit codes.
-4. **Write the review input** into a file `review-input.md` in a temporary folder, with these sections:
+4. **Write the review input** into a file `review-input.md` in a new private temporary folder (for example one made with `mktemp -d`), never at a fixed path in a shared folder such as `/tmp`, where other accounts on the machine could read the diff. Give it these sections:
    - **Diff:** the full diff.
    - **Requirements:** the acceptance criteria or intended behaviour from step 1.
    - **Evidence:** the check results from step 3.

@@ -51,12 +51,14 @@ All method state lives under `.agent/` in the target repository. Tool configurat
 | `.agent/checks.conf` | The check manifest: `tier\|label\|command` lines for the tiers `quick`, `full` and `security` | Humans (proposed by `paacm detect`) | Yes |
 | `.agent/extensions/<reference>.md` | The project's additions to one reference of the `paacm` skill (section 15) | Humans | Yes |
 | `.agent/tasks/CURRENT` | The identifier of the active task | Writer | No |
-| `.agent/tasks/<task-id>/state.json` | Machine-readable task state: route, autonomy level, status, approved-test baseline commit, consecutive gate failures | Writer and hooks | No |
+| `.agent/tasks/<task-id>/state.json` | Machine-readable task state: work item, route, autonomy level, status, approved-test baseline commit, consecutive gate failures | Writer and hooks | No |
 | `.agent/tasks/<task-id>/SPEC.md` | The specification (section 6, phase 2) | Writer; approved by the human | No (MAY be committed by team choice) |
 | `.agent/tasks/<task-id>/PLAN.md` | The task list (phase 4) | Writer; approved by the human at L1 | No (MAY be committed) |
 | `.agent/tasks/<task-id>/progress.md` | Append-only log: done, decided, next, failing commands | Writer | No |
 | `.agent/tasks/<task-id>/features.json` | Multi-session feature list; the writer may change only each entry's `passes` field | Writer (only `passes`) | No |
 | `.agent/tasks/<task-id>/REPORT.md` | The completion or `BLOCKED:` report (section 12) | Writer | No |
+| `.agent/tasks/<task-id>/gate.log` | The full output of the latest gate run | Runtime | No |
+| `.agent/tasks/<task-id>/review-input.md`, `review-diffs/` | The reviewer's input (phase 8) | Runtime | No |
 | `.agent/tasks/<task-id>/inputs/` | Read-only copies of supporting data fetched for the task (section 6, phase 1) | Writer | No |
 | `.agent/evals/` | Evaluation task sets and recorded runs (section 14) | Humans and `paacm eval` | Task sets yes, runs no |
 
@@ -66,6 +68,7 @@ All method state lives under `.agent/` in the target repository. Tool configurat
 {
   "id": "2026-10-14-session-expiry",
   "summary": "Expire idle sessions after 30 minutes and cover it with a regression test",
+  "ref": "acme/shop#142",
   "route": "STANDARD",
   "highStakes": false,
   "autonomy": "L1",
@@ -80,7 +83,9 @@ All method state lives under `.agent/` in the target repository. Tool configurat
 }
 ```
 
-`status` is one of `triaged`, `specifying`, `exploring`, `planning`, `testing`, `implementing`, `verifying`, `reviewing`, `done`, `blocked`. `baseCommit` is the commit the task started from; the review diff and the configuration audit are computed against it. `testsApprovedAt` is the commit at which the acceptance tests were approved, or `null` before phase 5. `lastGate` records the most recent gate run, and `gateFailures` counts consecutive failing runs. `blocked` holds the escalation trigger and reason once the task is blocked.
+`ref` is the work item the task serves (`paacm task start --ref`: an issue number, a tracker key, `owner/repo#N` or a URL), or `null`. `status` is one of `triaged`, `specifying`, `exploring`, `planning`, `testing`, `implementing`, `verifying`, `reviewing`, `done`, `blocked`. `baseCommit` is the commit the task started from; the review diff and the configuration audit are computed against it. `testsApprovedAt` is the commit at which the acceptance tests were approved, or `null` before phase 5. `lastGate` records the most recent gate run, and `gateFailures` counts consecutive failing runs. `blocked` holds the escalation trigger and reason once the task is blocked.
+
+Task state belongs to one worktree. The project is the nearest directory with `.agent/paacm.json` within the worktree the agent works in, never a directory above that worktree, so a linked worktree next to the project or nested in it ([section 9](#9-delegation-and-parallelism)) has its own current task. The protect hook judges each edited file by the worktree it is in, with that worktree's configuration and task, and the stop gate judges both the worktree the agent works in and the session's own project. When the session's folder is not a git repository (a folder holding several checkouts), the protect hook judges a file in any checkout below it by that checkout's rules wherever the agent's current directory is, and the stop gate also judges each checkout directly inside the folder that the session edited. State that belongs to one account, such as the session baseline the stop hook compares with, lives in the worktree's git directory, never in a temporary folder that other accounts on the machine share.
 
 ## 5. Routes
 
@@ -183,10 +188,11 @@ Each phase lists its entry condition, the steps, the artifact it produces and it
 - **Steps:**
   1. Write the reproduction test for a defect, or acceptance tests derived from the acceptance criteria for new behaviour, plus any pre- and postconditions worth asserting. For rule evaluation, parsing and transformations, include a property-based test when the project has a property-testing library.
   2. Run them and confirm they fail, and fail for the right reason.
-  3. For high-stakes work, or at L1, the human approves the tests.
-  4. Commit the tests, and record the commit in `state.json` as `testsApprovedAt`.
+  3. Make them final: run the project's formatter and linter fixers on them, and update the lists the change makes wrong (allow-lists, exception lists, snapshots) in the same commit, since none of it may change after approval.
+  4. For high-stakes work, or at L1, the human approves the tests.
+  5. Commit the tests, and record the commit in `state.json` as `testsApprovedAt` (`paacm task approve-tests`, which moves the task to implementing).
 - **Exit:** committed tests that fail for the right reason.
-- **Rule:** from `testsApprovedAt` on, test files, CI configuration, the check manifest and agent configuration are **read-only to the writer**. The protect hook blocks edits to them, and the gate's diff audit (phase 7) catches edits made by any other route. A legitimate change to a protected file requires the human's explicit approval in the conversation, `paacm task reopen-tests` (which the human confirms) and a new `testsApprovedAt`.
+- **Rule:** from `testsApprovedAt` on, test files, CI configuration, the check manifest and agent configuration are **read-only to the writer**. The protect hook blocks edits to them, and the gate's diff audit (phase 7) catches edits made by any other route. A legitimate change to a protected file requires the human's explicit approval in the conversation, `paacm task reopen-tests` (which the human confirms) and a new `testsApprovedAt`. The runtime refuses a new `testsApprovedAt` while a frozen file has changed since the last one without that reopening, whether the change was committed or not, and whether it came from the writer or from a merge; and it refuses to start a new task while the latest task is blocked with such a change, which is settled in that task.
 
 ### Phase 6: Implement
 
@@ -211,14 +217,16 @@ Each phase lists its entry condition, the steps, the artifact it produces and it
      - Optionally, run best-of-N: two to four worktree-isolated attempts, filtered by the regression and acceptance tests, then selected by the reviewer. The selector MUST be independent of the tests the writer saw.
   5. When the `claude-security` plugin is installed, high-stakes work also runs its scan of the changes at high effort; confirmed findings are fixed within the plan or end in `BLOCKED:`.
   6. A project MAY configure a mutation check in the `full` tier. When it fails, the writer MUST NOT edit the frozen tests; it reports the surviving mutants and stops with `BLOCKED:` (trigger 4) for the human to decide on more tests.
-- **Exit:** the gate is green and the diff audit is clean.
+  7. The gate saves its full output in the task folder (`gate.log`), so the writer can keep its console output short (`paacm gate --quiet`) and the reviewer can read the evidence. A check that cannot find a command (exit 127) is reported as a missing tool: an environment problem for the human (trigger 2), not a reason to change code.
+  8. The gate's configuration warnings say whether a change to a protected file arrived through a merge of commits a remote-tracking branch has (such as the base branch). That is context, not an exemption: the report accounts for every warning, saying who approved the change or, for a merged one, where it was reviewed.
+- **Exit:** the gate is green at the route's tier and the diff audit is clean.
 - **Rule:** after **three consecutive gate failures on the same check** (the retry cap), the writer MUST stop and escalate (trigger 5) instead of trying again.
 
 ### Phase 8: Review
 
 - **Entry:** STANDARD and DEEP, after phase 7 is green.
 - **Steps:**
-  1. Delegate to the reviewer with the diff, `SPEC.md` (or the triage line) and the gate output, and nothing else. The reviewer ignores the prose of commit messages and pull request descriptions.
+  1. Delegate to the reviewer with the diff, `SPEC.md` (or the triage line) and the gate output, and nothing else. The reviewer ignores the prose of commit messages and pull request descriptions. `paacm task review-input` assembles this as one file: the whole change including new files, with generated and very large diffs in separate files the reviewer reads, the gate log, the configuration warnings, the project's reviewer checklist and any file the writer saved in the task folder for the reviewer, who has no shell.
   2. The reviewer reports only **correctness, requirement and scope** findings, each with file and line evidence and a severity. It does not suggest refactors or style changes. When the diff adds or changes error handling, the error-handling reviewer reviews the same input and reports only failures the changed code can hide, such as swallowed errors, overly broad catches and unrequested fallbacks.
   3. The writer fixes every correctness finding (returning to phase 6), or explains why a finding is wrong.
 - **Exit:** no unresolved correctness findings.
@@ -228,7 +236,7 @@ Each phase lists its entry condition, the steps, the artifact it produces and it
 - **Entry:** phases 7 and 8 are complete.
 - **Steps:**
   1. Write `REPORT.md` (section 12) and give its content as the final answer.
-  2. Update `progress.md`, set `state.json` `status` to `done`, flip `features.json` `passes` for features whose test steps pass, and clear `.agent/tasks/CURRENT`.
+  2. Update `progress.md`, flip `features.json` `passes` for features whose test steps pass, and close the task with `paacm task done`, which sets `status` to `done` and clears `.agent/tasks/CURRENT`. It refuses unless the task reached its last phase (8 for STANDARD and DEEP, 7 for FAST), its tests were approved, the gate passed at the route's tier at the current commit with nothing uncommitted, and `REPORT.md`'s outcome is done.
   3. Push the branch and open a pull request only when the autonomy level allows it or the human asks. The human decides the merge.
 - **Exit:** the human has the report.
 
@@ -344,10 +352,10 @@ A criterion is `passed` only with evidence produced by the harness in this sessi
 | The algorithm on demand | Skill `/paacm` and phase skills in `.claude/skills/` | The same skills, read from `.claude/skills/` |
 | Explorer, implementer, reviewer | Subagents in `.claude/agents/` with tool restrictions and models | The same files, read from `.claude/agents/`; `readonly: true` for the explorer and reviewer |
 | Orient (session start) | `SessionStart` hook | `sessionStart` hook in `.cursor/hooks.json` |
-| Protect hook | `PreToolUse` hook, matcher `Edit\|Write`, exit code 2 to block, `onFailure: "block"` | `preToolUse` hook, matcher `Write\|Delete`, deny decision, `failClosed: true` |
+| Protect hook (a file is judged by the worktree it is in, with that worktree's configuration and task) | `PreToolUse` hook, matcher `Edit\|Write`, exit code 2 to block, `onFailure: "block"` | `preToolUse` hook, matcher `Write\|Delete`, deny decision, `failClosed: true` |
 | Shell guard | `PreToolUse` hook, matcher `Bash` | `beforeShellExecution` hook, `failClosed: true` |
 | Post-edit checks | `PostToolUse` hook, matcher `Edit\|Write` | `postToolUse` hook, matcher `Write` |
-| Stop gate | `Stop` hook returning `decision: "block"` while checks fail | `stop` hook returning `followup_message` while checks fail, bounded by `loop_limit` |
+| Stop gate | `Stop` hook returning `decision: "block"` while checks fail; a nudge (finish an open task whose gate is green, record the phases, start a task) is `additionalContext`, which continues the turn without being shown as a hook error | `stop` hook returning `followup_message` in the same cases, bounded by `loop_limit` |
 | Security scan (high-stakes) | The `claude-security` plugin, when installed | Not available (a Claude Code plugin) |
 | Code intelligence | Official code-intelligence plugins (`pyright-lsp`, `typescript-lsp`, …): diagnostics after edits and the read-only `LSP` tool for the explorer and reviewer | The editor's language servers: the agent reads diagnostics for open files |
 | Autonomy levels | Permission modes, `permissions` rules and the sandbox in `.claude/settings.json` | Run modes, `.cursor/permissions.json` and `.cursor/sandbox.json` |

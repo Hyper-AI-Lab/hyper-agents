@@ -2,6 +2,7 @@
 // Gives the agent its bearings: the runtime command, the repository state and the
 // current task. When PAACM runs as a plugin, the project has no AGENTS.md block,
 // so the core rules are injected here instead.
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { hasBlock } from '../lib/blocks.mjs'
@@ -18,7 +19,10 @@ runHook(async () => {
   const input = await readHookInput()
   const tool = detectTool(input)
   const projectDir = projectDirFrom(input)
-  const runtime = path.join(scriptsDir, 'paacm.mjs')
+  // The project's own copy of the runtime when it has one: in a worktree session
+  // the hook may run from the main checkout's copy.
+  const ownRuntime = path.join(projectDir, '.claude', 'skills', 'paacm', 'scripts', 'paacm.mjs')
+  const runtime = existsSync(ownRuntime) ? ownRuntime : path.join(scriptsDir, 'paacm.mjs')
   const rel = toProjectPath(projectDir, runtime)
   const command = rel ? `node ${rel}` : `node "${runtime}"`
 
@@ -33,12 +37,20 @@ runHook(async () => {
   }
 
   if (isRepo(projectDir)) {
-    await recordBaseline(projectDir, sessionIdFrom(input))
+    let baselineError = null
+    try {
+      await recordBaseline(projectDir, sessionIdFrom(input))
+    } catch (error) {
+      baselineError = error && error.message ? error.message : String(error)
+    }
     out.push('', '## Repository', '', `Branch: ${branch(projectDir) ?? '(detached)'}`)
     const status = statusShort(projectDir)
     out.push('', 'Uncommitted changes:', status ? `\n\`\`\`\n${status}\n\`\`\`` : '(none)')
     const commits = recentCommits(projectDir)
     if (commits) out.push('', 'Recent commits:', `\n\`\`\`\n${commits}\n\`\`\``)
+    if (baselineError) {
+      out.push('', `Warning: PAACM could not record the session baseline (${baselineError}). When no task is active, the stop hook will list every uncommitted file, not only the ones changed in this session.`)
+    }
   } else {
     out.push('', 'This folder is not a git repository. PAACM needs git for task baselines, the audit and per-task commits; ask the human before starting a coding task.')
   }
@@ -55,6 +67,7 @@ runHook(async () => {
       `## Current task: ${task.id}`,
       '',
       `Summary: ${task.summary}`,
+      ...(task.ref ? [`Work item: ${task.ref}`] : []),
       `Route: ${task.route}${task.highStakes ? ' (high-stakes)' : ''}; autonomy ${task.autonomy}; status ${task.status}; base ${shortSha(task.baseCommit) ?? 'none'}; tests approved at ${shortSha(task.testsApprovedAt) ?? 'not yet'}.`,
       task.lastGate ? `Last gate: tier ${task.lastGate.tier}, ${task.lastGate.passed ? 'passed' : `failed (${task.lastGate.failed})`} at ${shortSha(task.lastGate.head)}; consecutive failures ${task.gateFailures}.` : 'The gate has not run yet.',
       'Resume it with the paacm skill, phase 0: re-read the plan and progress, then run `paacm check --tier quick` before new work.',
