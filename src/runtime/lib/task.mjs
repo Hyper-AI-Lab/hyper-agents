@@ -2,8 +2,8 @@
 // append-only progress log. All writes are atomic.
 import { appendFile, mkdir, rm } from 'node:fs/promises'
 import path from 'node:path'
-import { readJsonOrNull, readTextOrNull, stableJson, writeFileAtomic } from './fs.mjs'
-import { changedSince, diffSince, head, shortSha, uncommittedPaths } from './git.mjs'
+import { listFiles, readJsonOrNull, readTextOrNull, stableJson, writeFileAtomic } from './fs.mjs'
+import { GIT_BUFFER, generatedPaths, head, shortSha, uncommittedPaths, workingTreeDiff } from './git.mjs'
 import { auditTask } from './audit.mjs'
 import { isProtectedTest, tierAtLeast, tierForRoute } from './config.mjs'
 import { readExtension, sectionOf } from './extensions.mjs'
@@ -260,22 +260,97 @@ export async function finishTask(projectDir, config) {
   return state
 }
 
-// Writes review-input.md for the reviewer: the diff since baseCommit, the
-// acceptance criteria (or summary) and the latest gate result.
-export async function writeReviewInput(projectDir) {
+// The reviewer reads review-input.md and has no shell. Diffs of generated files,
+// and of files whose diff alone exceeds SEPARATE_BYTES, go to separate files in
+// review-diffs/; then the largest remaining ones, until the diff in review-input.md
+// fits DIFF_BUDGET.
+const SEPARATE_BYTES = 64 * 1024
+const DIFF_BUDGET = 512 * 1024
+// Task files the evidence list leaves out: state, the writer's own documents,
+// review input, the gate log (named separately) and supporting data (untrusted).
+const NOT_EVIDENCE = new Set(['state.json', 'progress.md', 'SPEC.md', 'PLAN.md', 'REPORT.md', 'features.json', 'review-input.md', 'gate.log'])
+const bytes = (text) => Buffer.byteLength(text, 'utf8')
+
+// One diff section per file, in diff order.
+function splitDiff(diff) {
+  return diff.split(/^(?=diff --git )/m).filter((s) => s !== '')
+}
+
+// A code fence longer than any run of backticks in the text, so the text cannot
+// close it early.
+function fenceFor(text) {
+  const longest = Math.max(0, ...[...text.matchAll(/`+/g)].map((m) => m[0].length))
+  return '`'.repeat(Math.max(3, longest + 1))
+}
+
+// Writes review-input.md for the reviewer: the requirements, the evidence (the
+// latest gate and its log, the configuration warnings, files the writer saved
+// for reviewers), the changed files, the project's reviewer checklist and the
+// diff since baseCommit, new untracked files included.
+export async function writeReviewInput(projectDir, config) {
   const state = await requireCurrent(projectDir)
   const dir = taskDir(projectDir, state.id)
+  const inTask = (rel) => `${TASKS_DIR}/${state.id}/${rel}`
   const spec = await readTextOrNull(path.join(dir, 'SPEC.md'))
   let requirements = `Task summary: ${state.summary}`
   if (spec) {
     const m = /^##\s*6\.?\s*Acceptance criteria\s*\n([\s\S]*?)(?=^##\s|$(?![\s\S]))/im.exec(spec)
     requirements = m ? `Acceptance criteria (from SPEC.md):\n\n${m[1].trim()}` : `Specification:\n\n${spec.trim()}`
   }
-  const changed = changedSince(projectDir, state.baseCommit).filter((p) => !isTaskFile(p))
-  const diff = diffSince(projectDir, state.baseCommit)
-  const gate = state.lastGate
-    ? `Latest gate: tier ${state.lastGate.tier}, ${state.lastGate.passed ? 'passed' : `failed (${state.lastGate.failed})`}, at ${shortSha(state.lastGate.head)}${state.lastGate.dirty ? ' with uncommitted changes' : ''}, ${state.lastGate.at}`
-    : 'The gate has not been run for this task.'
+
+  let change
+  try {
+    change = workingTreeDiff(projectDir, state.baseCommit)
+  } catch (error) {
+    if (error && error.code === 'ENOBUFS') {
+      throw new TaskError(`the diff since ${shortSha(state.baseCommit) ?? 'the empty tree'} is larger than ${GIT_BUFFER / 1024 / 1024} MiB, too large to prepare for a review; ask the human how to split the change`)
+    }
+    throw error
+  }
+  const sections = splitDiff(change.diff)
+  const split = sections.length === change.files.length
+  const generated = generatedPaths(projectDir, change.files.map((f) => f.path))
+  const entries = change.files.map((f, i) => ({ ...f, section: split ? sections[i] : '', reason: null })).filter((e) => !isTaskFile(e.path))
+  if (split) {
+    for (const e of entries) {
+      if (generated.has(e.path)) e.reason = 'generated'
+      else if (bytes(e.section) > SEPARATE_BYTES) e.reason = 'large'
+    }
+    let size = entries.filter((e) => !e.reason).reduce((n, e) => n + bytes(e.section), 0)
+    for (const e of entries.filter((x) => !x.reason).sort((a, b) => bytes(b.section) - bytes(a.section))) {
+      if (size <= DIFF_BUDGET) break
+      e.reason = 'over the size budget'
+      size -= bytes(e.section)
+    }
+  }
+  const diffsDir = path.join(dir, 'review-diffs')
+  await rm(diffsDir, { recursive: true, force: true })
+  const separate = entries.filter((e) => e.reason)
+  for (const [i, e] of separate.entries()) {
+    e.file = inTask(`review-diffs/${String(i + 1).padStart(3, '0')}.diff`)
+    await writeFileAtomic(path.join(diffsDir, path.basename(e.file)), e.section)
+  }
+  const stats = (e) => (e.binary ? 'binary' : `+${e.added} −${e.deleted}`)
+  const diff = split ? entries.filter((e) => !e.reason).map((e) => e.section).join('') : change.diff
+  const fence = fenceFor(diff)
+
+  const evidence = [
+    state.lastGate
+      ? `Latest gate: tier ${state.lastGate.tier}, ${state.lastGate.passed ? 'passed' : `failed (${state.lastGate.failed})`}, at ${shortSha(state.lastGate.head)}${state.lastGate.dirty ? ' with uncommitted changes' : ''}, ${state.lastGate.at}`
+      : 'The gate has not been run for this task.',
+  ]
+  if (await readTextOrNull(path.join(dir, 'gate.log')) !== null) evidence.push(`Full output: ${inTask('gate.log')}`)
+  const warnings = auditTask(projectDir, config, state).warnings
+  if (warnings.length) {
+    evidence.push('', 'Protected configuration changed since the task started (the report must say who approved each change):', ...warnings.map((w) => `- ${w.path}: protected configuration changed in this task`))
+  }
+  try {
+    const saved = (await listFiles(dir)).filter((p) => !NOT_EVIDENCE.has(p) && !p.startsWith('inputs/') && !p.startsWith('review-diffs/'))
+    if (saved.length) evidence.push('', 'Files the writer saved for reviewers (read each one):', ...saved.map((p) => `- ${inTask(p)}`))
+  } catch (error) {
+    evidence.push('', `The task folder could not be listed for saved evidence (${error.message}); ask the writer which files to read.`)
+  }
+
   const checklist = sectionOf(await readExtension(projectDir, '08-review'), 'Reviewer checklist')
   const text = [
     `# Review input: ${state.id}`,
@@ -288,18 +363,22 @@ export async function writeReviewInput(projectDir) {
     '',
     '## Evidence',
     '',
-    gate,
+    ...evidence,
     '',
     '## Changed files',
     '',
-    changed.length ? changed.map((p) => `- ${p}`).join('\n') : '(none)',
+    entries.length ? entries.map((e) => `- ${e.path} (${stats(e)})`).join('\n') : '(none)',
     '',
     ...(checklist ? ['## Project reviewer checklist', '', 'Check each item against the diff as well, and report a violated item as a finding.', '', checklist, ''] : []),
+    ...(separate.length
+      ? ['## Diffs in separate files', '', 'These files are not in the diff below. Read each diff file; a generated file is reviewed for whether it should change at all.', '', ...separate.map((e) => `- ${e.path} (${stats(e)}, ${e.reason}): ${e.file}`), '']
+      : []),
     '## Diff',
     '',
-    '```diff',
+    ...(split ? [] : ['The diff could not be split per file, so it is shown whole.', '']),
+    `${fence}diff`,
     diff.trimEnd(),
-    '```',
+    fence,
     '',
   ].join('\n')
   const file = path.join(dir, 'review-input.md')

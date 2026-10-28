@@ -129,7 +129,7 @@ async function taskCommand(args, out, projectDir) {
     }
     case 'review-input': {
       if (rest.length) throw new UsageError('task review-input takes no arguments')
-      const { file } = await writeReviewInput(projectDir)
+      const { file } = await writeReviewInput(projectDir, await loadConfig(projectDir))
       out(path.relative(projectDir, file).split(path.sep).join('/'))
       return EXIT.OK
     }

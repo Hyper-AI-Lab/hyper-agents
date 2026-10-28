@@ -185,6 +185,6 @@ test('review-input carries the project reviewer checklist from the review extens
   await writeFiles(dir, { '.agent/extensions/08-review.md': '# Review\r\n\r\nRun security-reviewer too.\r\n\r\n## Reviewer checklist\r\n\r\n- Every endpoint has an authorization test.\r\n- No real client data in fixtures.\r\n\r\n## Notes\r\n\r\nnot for the reviewer\r\n' })
   text = await read(dir, runtime(dir, 'task', 'review-input').stdout.trim())
   assert.match(text, /## Project reviewer checklist\n\nCheck each item against the diff as well, and report a violated item as a finding\.\n\n- Every endpoint has an authorization test\.\n- No real client data in fixtures\.\n\n## Diff/)
-  assert.doesNotMatch(text, /not for the reviewer/)
+  assert.doesNotMatch(text.slice(0, text.indexOf('## Diff')), /not for the reviewer/, 'only the checklist section reaches the reviewer (the new extension file itself is in the diff)')
   assert.match(text, new RegExp(`# Review input: ${id}`))
 })
