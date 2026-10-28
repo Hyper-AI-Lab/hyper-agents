@@ -28,7 +28,7 @@ The same check failed three times in a row, and the agent stopped instead of gue
 
 ### "PAACM: … is a test file, and the tests were approved at …"
 
-Test files are read-only once you approve the tests, so the agent cannot change the target to pass it. If a test really is wrong, the agent should stop with `BLOCKED: trigger 4` and show the conflict. Approve the specific change in the conversation; after it is made, the agent runs `paacm task approve-tests` again.
+Test files are read-only once you approve the tests, so the agent cannot change the target to pass it. If a test really is wrong, the agent should stop with `BLOCKED: trigger 4` and show the conflict. Approve the specific change in the conversation. The agent then runs `paacm task reopen-tests --reason "<the change you approved>"`, which the IDE asks you to confirm, makes only that change, commits it and runs `paacm task approve-tests` again. `approve-tests` alone refuses to take a new baseline over a changed test, so a test edited some other way (through the shell, or brought in by a merge) also goes through this confirmation.
 
 ### Edits to settings, hooks, CI or `.agent/checks.conf` are refused or need approval
 
@@ -36,11 +36,36 @@ These files make other programs run commands, so PAACM protects them. Claude Cod
 
 ### "PAACM shell guard: blocked because this command …"
 
-The shell guard denies the most damaging command patterns (disabling permission checks, piping a download into a shell, deleting the root, home or whole working tree, formatting disks, writing into `.git/hooks`, rewriting agent configuration through the shell). It asks before consequential ones (pushing, discarding work or rewriting history, recursive deletion, deploying, dropping database objects, broad permission changes). Run a denied command yourself if you are sure it is right.
+The shell guard denies the most damaging command patterns (disabling permission checks, piping a download into a shell, deleting the root, home or whole working tree, formatting disks, writing into `.git/hooks`, rewriting agent configuration through the shell). It asks before consequential ones (skipping the repository's git hooks with `--no-verify`, `core.hooksPath` or `HUSKY=0`, pushing, discarding work or rewriting history, recursive deletion, deploying, dropping database objects, broad permission changes). Run a denied command yourself if you are sure it is right.
 
 ### "N file(s) changed in this session and no PAACM task is active"
 
 The agent edited files without starting a task, so nothing verified the edits. If it was a coding request, the agent should start a task and run the gate; if you asked for a quick edit outside PAACM, it says so and finishes. Files that were already uncommitted when the session started count only if they changed during the session. If the message says the files "have uncommitted changes" instead, PAACM has no record of the session's start (for example, it was installed during the session), so every uncommitted file is listed.
+
+### `paacm task done` refuses to close the task
+
+It closes only a finished task, and the message says what is missing:
+
+- **The phase.** STANDARD and DEEP tasks close after the review (`paacm task phase reviewing`), FAST tasks after verification (`paacm task phase verifying`).
+- **Approved tests.** `paacm task approve-tests` was never run, so the audit had nothing to protect.
+- **The gate.** It must have passed at the current commit with nothing uncommitted, at the route's tier or higher (`full` for DEEP by default). A `paacm gate --tier quick` does not close a DEEP task.
+- **The report.** `REPORT.md` in the task folder must begin with `OUTCOME: done`. A blocked task is closed with `paacm task block` instead.
+
+### "The gate is green, but task … is still …"
+
+The stop hook nudges once when the agent tries to stop with an open task whose gate passes, and once when a STANDARD or DEEP task changed files without recording its phases. If the agent is waiting for your answer, it says so and stops again; the second stop is always let through.
+
+### A check fails with exit code 127
+
+The check could not find a command (on Windows, exit code 9009): the tool is not installed where the agent runs, or not on the `PATH` of the IDE. The gate prints a hint, and the agent reports it instead of changing code. Install the tool, or tell the agent to record the check under CHECKS NOT RUN. `doctor` lists the check programs it cannot find.
+
+### "PAACM could not record the session baseline"
+
+The session start could not write to `paacm-sessions/` in the worktree's git directory, for example because the clone belongs to another account. The session works normally; only the stop hook's list of files changed without a task falls back to every uncommitted file. Give each person their own clone ([shared machines](setup.md#shared-machines)).
+
+### Edits in a worktree are judged by that worktree
+
+Each linked worktree, next to the project or nested in it (for example under `.claude/worktrees/`), has its own `.agent/tasks/` and its own current task. The protect hook checks an edit against the worktree the file is in. An approved test in a worktree is read-only even when the agent's session started in the main checkout, and an ordinary file in a nested worktree is no longer treated as agent configuration.
 
 ### `init` lists conflicts and writes nothing
 

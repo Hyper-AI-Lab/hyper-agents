@@ -47,7 +47,7 @@ export const COMMANDS = {
   check: {
     run: (args, io) => runtime(['check', ...args], { out: io.out, err: io.err }),
     summary: 'Run the project checks in .agent/checks.conf',
-    help: 'Usage: paacm check --list | --tier <quick|full|security> [--json]\n\nExit codes: 0 passed, 1 failed, 2 configuration error, 3 a required tier has no checks.',
+    help: 'Usage: paacm check --list | --tier <quick|full|security> [--quiet] [--json]\n\nExit codes: 0 passed, 1 failed, 2 configuration error, 3 a required tier has no checks.',
   },
   eval: {
     run: evaluate,

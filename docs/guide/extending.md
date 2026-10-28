@@ -39,7 +39,7 @@ What an extension may contain:
 
 - **Additions only.** Steps, fields, sources to read, reviewers to run and checks to apply.
 - **No gate removals.** It never removes or weakens a gate: the human approvals, frozen tests, the gate and its retry cap, the escalation triggers, approval of consequential actions. If an extension conflicts with a gate, the agent follows the gate and tells you.
-- **`## Reviewer checklist`** in `08-review.md` is special. `paacm task review-input` copies that section into the review input, so the fresh-context reviewer checks every item. Write each item as something the reviewer can confirm against a diff.
+- **`## Reviewer checklist`** in `08-review.md` is special. `paacm task review-input` copies that section into the review input, so the fresh-context reviewer checks every item. Write each item as something the reviewer can confirm against a diff. Only this section reaches the reviewer: put every reviewer rule under it, using `###` subheadings if needed, and keep the other sections for instructions to the writer. `paacm doctor` warns when the section is missing and names the sections that stay with the writer. The reviewer has no shell: if it needs a tool's output, have the writer save it in the task folder, where the review input lists it.
 - **Explorer requirements.** The explorer subagent does not read extensions. The explore reference tells the writer to put the requirements of `03-explore.md` (sources to search, conventions to report) into the explorer's brief.
 
 Extensions are protected configuration (`.agent/extensions/**`), like the checks and the hooks. The agent does not edit them during a task without your approval. Change them in a reviewed pull request, as you would any process change.

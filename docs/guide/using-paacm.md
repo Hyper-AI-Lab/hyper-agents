@@ -9,7 +9,7 @@ PAACM turns one request into one verified change. One agent, the **writer**, mak
 | Project install | `/paacm <request>` | `/paacm <request>` |
 | Plugin | `/paacm:paacm <request>` | the `paacm` skill, with the request |
 
-You do not have to invoke the skill: the always-on rules tell the agent to follow it for every request that changes code, tests or configuration. Invoking it makes sure. Questions that change nothing are answered directly, without a task.
+You do not have to invoke the skill: the always-on rules tell the agent to follow it for every request that changes files in the repository, documentation included. Invoking it makes sure. Questions that change nothing are answered directly, without a task.
 
 Two more skills cover the rest:
 
@@ -36,7 +36,7 @@ Mention anything that helps, in the request itself. The agent records each item,
 |---|---|
 | **The repository to change** | It is the repository open in the IDE. To work on another one, open that one; the agent does not edit repositories outside the workspace. |
 | **A GitHub URL or another local repository, as a reference** | Read-only. A URL is cloned shallowly into the task's `inputs/` folder and its commit recorded; a local path is read in place. The agent never runs its scripts, installers or tests, and checks its licence before reusing code. |
-| **Documents, tickets, specifications** (paths, pasted text) | Summarized into the task's specification as context sources with pointers. |
+| **Documents, tickets, specifications** (paths, pasted text) | Summarized into the task's specification as context sources with pointers. A ticket or issue the task serves is also recorded as its work item (`--ref`) and appears in the report. |
 | **Screenshots and designs** | Input, and the target for visual verification. |
 | **Logs and error output** | Saved as files in the task folder and searched; only the relevant lines are quoted. |
 | **Links to web pages** | Fetched only if the IDE allows web access at the current autonomy level; otherwise the agent asks you for the content. |
@@ -63,7 +63,7 @@ Then it works through the phases. You come in at these points:
 4. **The tests** (at L1, and for every high-stakes task). The agent writes them first and shows that they fail for the right reason. Review them like code: wrong tests lock in wrong behaviour. Once you approve, the tests are frozen: the agent may not edit them or the check configuration. With the power layer or a plugin, a hook refuses such edits, and the gate's audit catches any change made another way.
 5. **The report** at the end.
 
-Between those points the agent implements one plan task at a time and commits each one. It runs the gate: the protected-path audit and the checks in `.agent/checks.conf`. While the gate fails it cannot finish, and after three consecutive failures of the same check it stops and asks instead of trying again. A fresh-context reviewer then checks the diff against the specification.
+Between those points the agent implements one plan task at a time and commits each one. It runs the gate: the protected-path audit and the checks in `.agent/checks.conf`. While the gate fails it cannot finish, and after three consecutive failures of the same check it stops and asks instead of trying again. A fresh-context reviewer then checks the diff against the specification. The task closes only through `paacm task done`, which checks that the phases were followed, the tests were approved, the gate passed at the route's tier and the report is written.
 
 ## Choose the autonomy level
 
@@ -87,6 +87,7 @@ Every task ends with a report in this form, also saved as `REPORT.md`:
 ```text
 OUTCOME: done — Idle sessions expire after 30 minutes; regression test added
 ROUTE / AUTONOMY: STANDARD / L1
+WORK ITEM: acme/shop#142
 CHANGES: src/session/store.ts, src/session/middleware.ts, test/session-expiry.test.ts; commits 3f2c1ab 9e7d210
 ACCEPTANCE:
   1. A session idle for 30 minutes gets 401 — passed — npm test -- session-expiry → exit 0 ("expires idle session" ok)

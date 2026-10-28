@@ -133,6 +133,28 @@ Run the checks yourself to see that they work:
 npx github:Hyper-AI-Lab/hyper-agents check --tier quick
 ```
 
+`doctor` warns about a check whose program is not installed on this machine, because the gate would stop there with exit code 127. A check whose tool cannot be installed where the agent runs belongs in CI only.
+
+### Run the checks in CI
+
+Run the same manifest in your CI, so that every pull request passes the same commands, whoever made it. Use `check`, not `gate`: the gate belongs to a task on the agent's machine. Install the tools the checks call before this step. In a project install the runtime is in the repository:
+
+```yaml
+- uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+- uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+  with:
+    node-version: 22
+- run: node .claude/skills/paacm/scripts/paacm.mjs check --tier full
+```
+
+With the plugin, the repository has no copy of the runtime; pin the kit's version instead:
+
+```yaml
+- run: npx github:Hyper-AI-Lab/hyper-agents#v3.5.0 check --tier full
+```
+
+Add `--quiet` to show only the check lines and the end of a failing check's output. Held-out acceptance tests for high-stakes work ([phase 7](../method/ALGORITHM.md#phase-7-verify)) also run in CI, outside the agent's workspace.
+
 ### Add a mutation check (optional)
 
 Once tests are approved for a task they are frozen, so the gate is only as strong as their ability to catch faults. Coverage does not measure that. A mutation tool does: it changes the code in small ways and counts the changes that no test notices. Add one to the `full` tier and set the score below which it fails, for example with StrykerJS for TypeScript:
@@ -190,6 +212,7 @@ With `--autonomy L2` or `L3` and the power layer, Claude Code runs shell command
 PAACM works the same on a server that several people use over SSH. The agent acts with the operating-system account it runs in, so set the machine up per person, not per project:
 
 - **One account per person.** The agent uses the account's Claude Code login and user settings (`~/.claude/`), its git author, its `gh` login and its cloud credentials. When people share an account, their commits and pull requests carry one identity, a rule that someone else must approve a pull request no longer means anything, and one person's user settings change everyone's sessions.
-- **One clone or worktree per person.** Task state lives in the working tree (`.agent/tasks/`), and `paacm task start` refuses while another task is active there. Two people in one working tree block each other's tasks and mix their changes.
+- **One clone or worktree per person.** Task state lives in the working tree (`.agent/tasks/`), and `paacm task start` refuses while another task is active there. Two people in one working tree block each other's tasks and mix their changes. Each linked worktree, next to the clone or nested in it (for example under `.claude/worktrees/`), has its own task, and the hooks judge every edit by the worktree the file is in.
+- **Nothing per-person in shared folders.** PAACM keeps each session's baseline in `paacm-sessions/` in the worktree's git directory (`.git/paacm-sessions/` in a main checkout), readable only by its owner and never in `/tmp`, so a cleanup of the shared temporary folder or another account cannot break or read it. Keep your own scratch files and review inputs in private folders too.
 - **No long-lived cloud keys where agents run.** An agent can run any command its account can, within the permission rules, and deny rules for shell commands are not a security boundary. Keep deployment and administrator credentials in CI, for example GitHub Actions with OpenID Connect. Give agent accounts short-lived or read-only access, or none.
 - **Not as root.** Root can read every account's files and credentials, so an agent running as root can too. File permissions between ordinary accounts are what keep one person's projects and keys away from another person's agent.

@@ -173,3 +173,16 @@ Evidence (`npm test`, 105 tests):
 
 - `test/hardening.test.mjs`: one test per finding, each failing before the fix; a control test that a human-approved configuration change with a new test baseline still passes; and the `reopen-tests` flow from approval through a new baseline.
 - Headless Claude Code 2.1.292 runs on a fixture project: a FAST fix end to end (task, approved test, fix, gate, done), and a request to change an approved test (refused by the hook, escalated with trigger 4).
+
+## Release 3.5.0
+
+Release 3.5.0 closes the gaps a team project found between the method and what the runtime enforces (R3, R4, R5, R6, R12): a task finishes only through `paacm task done` after its last phase, with approved tests, a gate at the route's tier and a report; state and protection follow the worktree; per-account state stays out of shared folders; a new test baseline cannot absorb a frozen-file change; the review input holds the whole change and the evidence; the gate output is short with the full log saved; a missing tool is named; the audit tells merged changes from the task's own; the shell guard asks before skipping git hooks; a task can name its work item ([ADR 0021](../method/adr/0021-finishing-worktrees-and-shared-machines.md)).
+
+Evidence (`npm test`, 140 tests):
+
+- `test/finishing.test.mjs`: each `task done` refusal (phase, tests, gate, tier, report), the stop gate's two nudges given once and never on a continuation or a duplicate stop, a gate below the route's tier, and the next-reference hints.
+- `test/worktrees.test.mjs`: nested and sibling worktrees judged by their own rules and task, another repository left alone, a session started in a subdirectory, a submodule, the hooks following `cwd` into a worktree while `CLAUDE_PROJECT_DIR` stays at the main checkout, and the runtime never climbing out of a worktree.
+- `test/sessions.test.mjs`: baselines in the git directory with private modes and nothing in `TMPDIR`, a context that survives an unwritable baseline, and pruning.
+- `test/review.test.mjs`, `test/gate.test.mjs`, `test/audit.test.mjs`: new files in the review input, generated and large diffs split out, a safe fence, the evidence section, the fenced checklist heading; `--quiet` and `gate.log`; exit 127; merge and task origins, and strict violations after a merge.
+- `test/hardening.test.mjs`: hook-skipping commands and deploys with global options, the new protected defaults, re-approval over a changed frozen file refused, and testing → implementing.
+- Two Linux accounts sharing one temporary folder (run as two unprivileged uids): with 3.4.1 the second account's session start exits 1 with `EACCES` and emits no context; with 3.5.0 both get their context and each baseline folder is private to its owner.
