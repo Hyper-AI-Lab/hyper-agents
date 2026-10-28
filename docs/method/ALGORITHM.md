@@ -355,7 +355,7 @@ A criterion is `passed` only with evidence produced by the harness in this sessi
 | Protect hook (a file is judged by the worktree it is in, with that worktree's configuration and task) | `PreToolUse` hook, matcher `Edit\|Write`, exit code 2 to block, `onFailure: "block"` | `preToolUse` hook, matcher `Write\|Delete`, deny decision, `failClosed: true` |
 | Shell guard | `PreToolUse` hook, matcher `Bash` | `beforeShellExecution` hook, `failClosed: true` |
 | Post-edit checks | `PostToolUse` hook, matcher `Edit\|Write` | `postToolUse` hook, matcher `Write` |
-| Stop gate | `Stop` hook returning `decision: "block"` while checks fail, and once to finish an open task whose gate is green | `stop` hook returning `followup_message` in the same cases, bounded by `loop_limit` |
+| Stop gate | `Stop` hook returning `decision: "block"` while checks fail; a nudge (finish an open task whose gate is green, record the phases, start a task) is `additionalContext`, which continues the turn without being shown as a hook error | `stop` hook returning `followup_message` in the same cases, bounded by `loop_limit` |
 | Security scan (high-stakes) | The `claude-security` plugin, when installed | Not available (a Claude Code plugin) |
 | Code intelligence | Official code-intelligence plugins (`pyright-lsp`, `typescript-lsp`, …): diagnostics after edits and the read-only `LSP` tool for the explorer and reviewer | The editor's language servers: the agent reads diagnostics for open files |
 | Autonomy levels | Permission modes, `permissions` rules and the sandbox in `.claude/settings.json` | Run modes, `.cursor/permissions.json` and `.cursor/sandbox.json` |

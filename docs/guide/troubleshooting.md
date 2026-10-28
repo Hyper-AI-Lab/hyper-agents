@@ -53,7 +53,7 @@ It closes only a finished task, and the message says what is missing:
 
 ### "The gate is green, but task … is still …"
 
-The stop hook nudges once when the agent tries to stop with an open task whose gate passes, and once when a STANDARD or DEEP task changed files without recording its phases. If the agent is waiting for your answer, it says so and stops again; the second stop is always let through.
+The stop hook nudges once when the agent tries to stop with an open task whose gate passes, and once when a STANDARD or DEEP task changed files without recording its phases. If the agent is waiting for your answer, it says so and stops again; the second stop is always let through. Claude Code shows a nudge as stop hook feedback, not as a hook error; only a failing gate is reported as a blocking error.
 
 ### A check fails with exit code 127
 

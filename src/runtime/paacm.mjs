@@ -119,6 +119,10 @@ async function taskCommand(args, out, projectDir) {
       if (rest.length) throw new UsageError('task approve-tests takes no arguments')
       const state = await approveTests(projectDir, await loadConfig(projectDir))
       out(`Tests approved at ${shortSha(state.testsApprovedAt)}; test files are now read-only for task ${state.id}.`)
+      if (state.status === 'implementing') {
+        out(`Task ${state.id}: status implementing`)
+        out(readNext(projectDir, PHASE_REFERENCES.implementing))
+      }
       return EXIT.OK
     }
     case 'reopen-tests': {

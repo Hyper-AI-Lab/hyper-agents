@@ -3,7 +3,10 @@
 // (before implementation), after `paacm task block`, or with a BLOCKED: report.
 // An open task whose gate is green, or a STANDARD or DEEP task that changed files
 // without recording its phases, is nudged once; the next stop is let through, so
-// an agent waiting for the human is never held.
+// an agent waiting for the human is never held. A nudge is guidance, not a
+// failure: Claude Code gets it as additionalContext, which continues the turn
+// like a block (with the same stop_hook_active protection) but is not shown to
+// the user as a hook error. A failing gate blocks.
 import { loadConfig, tierAtLeast, tierForRoute } from '../lib/config.mjs'
 import { GATE, recentGate, runGate, worktreeFingerprint } from '../lib/gate.mjs'
 import { changedSince, head, uncommittedPaths } from '../lib/git.mjs'
@@ -26,6 +29,7 @@ runHook(async () => {
     if (tool === 'cursor') emit({})
   }
   const block = (reason) => (tool === 'claude' ? emit({ decision: 'block', reason }) : emit({ followup_message: reason }))
+  const guide = (text) => (tool === 'claude' ? emit({ hookSpecificOutput: { hookEventName: 'Stop', additionalContext: text } }) : emit({ followup_message: text }))
 
   if (tool === 'cursor' && input.status && input.status !== 'completed') return allow()
   const lastMessage = typeof input.last_assistant_message === 'string' ? input.last_assistant_message : ''
@@ -39,7 +43,7 @@ runHook(async () => {
     const changed = (sinceStart ?? uncommittedPaths(projectDir)).filter((p) => !isTaskFile(p))
     if (changed.length && !continuation) {
       const list = `${changed.slice(0, 5).join(', ')}${changed.length > 5 ? ', …' : ''}`
-      return block(
+      return guide(
         `PAACM: ${sinceStart ? `${changed.length} file(s) changed in this session` : `${changed.length} file(s) have uncommitted changes`} and no PAACM task is active (${list}). If this was a coding request, start a task with \`paacm task start\` and verify with \`paacm gate\` before finishing. If the user asked for these edits outside PAACM, or they are not yours, say so in your answer.`,
       )
     }
@@ -56,7 +60,7 @@ runHook(async () => {
     if (last && last.kind === kind && last.fingerprint === fingerprint && Date.now() - Date.parse(last.at) < NUDGE_DEDUP_MS) return allow()
     task.lastNudge = { kind, fingerprint, at: new Date().toISOString() }
     await writeState(projectDir, task)
-    return block(message)
+    return guide(message)
   }
   const waiting = 'If you are waiting for the human (a question or an approval), say so in your answer and stop again.'
   const missingTool = (label, details) =>
@@ -97,7 +101,7 @@ runHook(async () => {
   const log = lines.slice(-12).join('\n')
   if (result.code === GATE.UNCONFIGURED || result.code === GATE.CONFIG) {
     if (continuation) return allow()
-    return block(
+    return guide(
       `PAACM gate could not verify this task:\n${log}\n\nYou cannot fix this by changing code. List the missing checks under CHECKS NOT RUN in the report, and ask the human to configure .agent/checks.conf (or fix .agent/paacm.json). Use \`paacm task block --trigger 2 --reason "<what is missing>"\` if the task cannot be verified without it.`,
     )
   }

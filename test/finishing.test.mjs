@@ -4,7 +4,7 @@
 // runtime says which reference to read next.
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { commitAll, hook, read, repo, runtime, writeFiles } from './helpers.mjs'
+import { commitAll, hook, read, repo, runtime, stopGuidance, writeFiles } from './helpers.mjs'
 
 const pass = 'node -e "process.exit(0)"'
 const fail = 'node -e "process.exit(1)"'
@@ -65,7 +65,7 @@ test('stop gate: a STANDARD task still triaged with changed files is told to fol
   const stop = (extra = {}) => hook('stop-gate', { hook_event_name: 'Stop', stop_hook_active: false, ...extra }, { projectDir: dir })
   assert.equal(stop().json, null, 'nothing changed yet: asking the human at intake is fine')
   await writeFiles(dir, { 'src/a.js': 'changed\n' })
-  assert.match(stop().json.reason, /still triaged[\s\S]*paacm task phase/)
+  assert.match(stopGuidance(stop()), /still triaged[\s\S]*paacm task phase/)
   assert.equal(stop({ stop_hook_active: true }).json, null)
 })
 
@@ -78,7 +78,7 @@ test('stop gate: a green gate does not end an open task without one nudge to fin
   commitAll(dir)
   assert.equal(runtime(dir, 'gate').code, 0)
   const claude = (extra = {}) => hook('stop-gate', { hook_event_name: 'Stop', stop_hook_active: false, ...extra }, { projectDir: dir })
-  assert.match(claude().json.reason, /gate is green, but task .*-open is still implementing[\s\S]*REPORT\.md[\s\S]*paacm task done[\s\S]*waiting for the human/)
+  assert.match(stopGuidance(claude()), /gate is green, but task .*-open is still implementing[\s\S]*REPORT\.md[\s\S]*paacm task done[\s\S]*waiting for the human/)
   assert.equal(claude({ stop_hook_active: true }).json, null)
 
   // Cursor also runs the imported Claude Code hooks: the same stop arrives twice and is nudged once.
@@ -103,6 +103,8 @@ test('the runtime says which reference to read next', async (t) => {
   const dir = await project(t)
   const start = runtime(dir, 'task', 'start', '--slug', 'hint', '--route', 'STANDARD', '--summary', 'x')
   assert.match(start.stdout, /References: [\s\S]*09-deliver\.md[\s\S]*paacm task done/)
+  runtime(dir, 'task', 'phase', 'testing')
+  assert.match(runtime(dir, 'task', 'approve-tests').stdout, /status implementing\nNext: read \S*06-implement\.md/, 'approve-tests says the task moved on')
   assert.match(runtime(dir, 'task', 'phase', 'implementing').stdout, /Next: read \S*06-implement\.md/)
   await writeFiles(dir, { '.agent/extensions/07-verify.md': '# Verify here\n' })
   assert.match(runtime(dir, 'task', 'phase', 'verifying').stdout, /Next: read \S*07-verify\.md and \.agent\/extensions\/07-verify\.md/)

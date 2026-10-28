@@ -6,7 +6,7 @@ import { existsSync, readdirSync, statSync, utimesSync, writeFileSync } from 'no
 import { mkdir } from 'node:fs/promises'
 import path from 'node:path'
 import { test } from 'node:test'
-import { git, hook, repo, tempDir, writeFiles } from './helpers.mjs'
+import { git, hook, repo, stopGuidance, tempDir, writeFiles } from './helpers.mjs'
 
 const files = { '.agent/checks.conf': 'quick|unit|node -e "process.exit(0)"\n', 'src/a.js': 'a\n' }
 let n = 0
@@ -52,7 +52,7 @@ test('session start still gives its context when the baseline cannot be recorded
 
   await writeFiles(dir, { 'src/b.js': 'new\n' })
   const stop = hook('stop-gate', { hook_event_name: 'Stop', session_id: id, stop_hook_active: false, cwd: dir }, { projectDir: dir })
-  assert.match(stop.json.reason, /have uncommitted changes/, 'without a baseline every uncommitted file is listed')
+  assert.match(stopGuidance(stop), /have uncommitted changes/, 'without a baseline every uncommitted file is listed')
 })
 
 test('baselines older than 30 days are removed when a session starts', async (t) => {
