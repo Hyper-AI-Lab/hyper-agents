@@ -77,12 +77,45 @@ test('gate: emptying the protected test patterns after approval does not hide a 
   assert.match(r.out, /PROTECTED \.agent\/paacm\.json/)
 })
 
-test('gate: a configuration change approved with a new test baseline passes', async (t) => {
+test('gate: a configuration change the human approved passes after reopen-tests and a new test baseline', async (t) => {
   const dir = await approved(t)
   await writeFiles(dir, { '.agent/checks.conf': `quick|unit|${pass}\nquick|lint|${pass}\n` })
   commitAll(dir)
+  const gate = runtime(dir, 'gate')
+  assert.equal(gate.code, 4)
+  assert.match(gate.out, /paacm task reopen-tests/, 'the gate names the way to a new baseline')
+  const again = runtime(dir, 'task', 'approve-tests')
+  assert.equal(again.code, 1, 'approve-tests alone cannot accept the change')
+  assert.match(again.out, /\.agent\/checks\.conf[\s\S]*reopen-tests/)
+  assert.equal(runtime(dir, 'task', 'reopen-tests', '--reason', 'the human approved the lint check').code, 0)
   assert.equal(runtime(dir, 'task', 'approve-tests').code, 0)
   assert.equal(runtime(dir, 'gate').code, 0)
+})
+
+test('approve-tests cannot re-approve a test changed after the approval, for example through the shell', async (t) => {
+  const dir = await approved(t)
+  await writeFiles(dir, { 'test/a.test.js': 'weakened\n' })
+  commitAll(dir, 'edit the approved test')
+  const r = runtime(dir, 'task', 'approve-tests')
+  assert.equal(r.code, 1, r.out)
+  assert.match(r.out, /test\/a\.test\.js[\s\S]*reopen-tests/)
+  assert.equal(runtime(dir, 'gate').code, 4, 'the old baseline still holds')
+})
+
+test('approve-tests moves a task out of testing, and accepts a new baseline when no frozen file changed', async (t) => {
+  const dir = await repo(t, { files: { '.agent/checks.conf': `quick|unit|${pass}\n`, 'src/a.js': 'a\n', 'test/a.test.js': 'ok\n' } })
+  runtime(dir, 'task', 'start', '--slug', 's', '--route', 'STANDARD', '--summary', 'x')
+  runtime(dir, 'task', 'phase', 'testing')
+  assert.equal(runtime(dir, 'task', 'approve-tests').code, 0)
+  const status = () => JSON.parse(runtime(dir, 'task', 'status', '--json').stdout).status
+  assert.equal(status(), 'implementing')
+  await writeFiles(dir, { 'src/a.js': 'b\n' })
+  commitAll(dir, 'implementation')
+  assert.equal(runtime(dir, 'task', 'approve-tests').code, 0)
+  assert.equal(runtime(dir, 'task', 'reopen-tests', '--reason', 'approved change').code, 0)
+  assert.equal(status(), 'testing')
+  assert.equal(runtime(dir, 'task', 'approve-tests').code, 0)
+  assert.equal(status(), 'implementing')
 })
 
 test('shell guard: writing the gate configuration or the task state through the shell is denied', () => {

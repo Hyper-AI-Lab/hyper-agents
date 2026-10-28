@@ -1,6 +1,7 @@
 // The project configuration file .agent/paacm.json: its schema, defaults and loading.
 import path from 'node:path'
 import { readJsonOrNull } from './fs.mjs'
+import { CASE_INSENSITIVE_FS, matchesAny } from './glob.mjs'
 
 export const CONFIG_PATH = '.agent/paacm.json'
 export const TIERS = ['quick', 'full', 'security']
@@ -52,6 +53,11 @@ export const DEFAULT_CONFIG = Object.freeze({
   },
   postEdit: [],
 })
+
+// Whether a repository path is a protected test file, or protected
+// configuration. Case is ignored where the file system ignores it.
+export const isProtectedTest = (rel, config) => matchesAny(rel, config.protect.tests, { ignoreCase: CASE_INSENSITIVE_FS })
+export const isProtectedConfig = (rel, config) => matchesAny(rel, config.protect.config, { ignoreCase: CASE_INSENSITIVE_FS })
 
 export function validateConfig(config) {
   const problems = []

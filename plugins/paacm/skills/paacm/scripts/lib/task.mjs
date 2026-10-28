@@ -4,8 +4,9 @@ import { appendFile, mkdir, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { readJsonOrNull, readTextOrNull, stableJson, writeFileAtomic } from './fs.mjs'
 import { changedSince, diffSince, head, shortSha, uncommittedPaths } from './git.mjs'
+import { auditTask } from './audit.mjs'
+import { isProtectedTest } from './config.mjs'
 import { readExtension, sectionOf } from './extensions.mjs'
-import { matchesAny } from './glob.mjs'
 
 export const TASKS_DIR = '.agent/tasks'
 export const ROUTES = ['FAST', 'STANDARD', 'DEEP']
@@ -144,15 +145,28 @@ export async function approveTests(projectDir, config) {
   const state = await requireCurrent(projectDir)
   const sha = head(projectDir)
   if (!sha) throw new TaskError('the repository has no commits yet; commit the tests first')
-  const dirtyTests = uncommittedPaths(projectDir).filter((p) => matchesAny(p, config.protect.tests))
+  const dirtyTests = uncommittedPaths(projectDir).filter((p) => isProtectedTest(p, config))
   if (dirtyTests.length) {
     throw new TaskError(`commit the tests before approving them; uncommitted test files: ${dirtyTests.slice(0, 10).join(', ')}`)
   }
+  // A new baseline must not absorb a change to the frozen files: that would let
+  // the writer edit an approved test (for example through the shell) and approve
+  // its own edit. Such a change needs reopen-tests, which the human confirms.
+  if (state.testsApprovedAt) {
+    const changed = auditTask(projectDir, config, state).violations.map((v) => v.path)
+    if (changed.length) {
+      throw new TaskError(
+        `the tests were approved at ${shortSha(state.testsApprovedAt)} and these frozen files changed since: ${changed.slice(0, 10).join(', ')}. A new baseline needs the human: after they approve the change in the conversation, run paacm task reopen-tests --reason "<the approved change>" (the IDE asks them to confirm), then paacm task approve-tests`,
+      )
+    }
+  }
   const previous = state.testsApprovedAt
+  const from = state.status
   state.testsApprovedAt = sha
   state.gateFailures = 0
+  if (from === 'testing') state.status = 'implementing'
   await writeState(projectDir, state)
-  await appendProgress(projectDir, state.id, `tests approved at ${shortSha(sha)}${previous ? ` (previous baseline ${shortSha(previous)})` : ''}`)
+  await appendProgress(projectDir, state.id, `tests approved at ${shortSha(sha)}${previous ? ` (previous baseline ${shortSha(previous)})` : ''}${from === 'testing' ? '; phase: testing → implementing' : ''}`)
   return state
 }
 

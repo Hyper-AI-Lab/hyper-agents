@@ -4,7 +4,7 @@
 // configuration and task, so a linked worktree next to the project or nested in
 // it is protected like the project. Configured to fail closed: if this script
 // cannot decide, the edit is blocked.
-import { loadConfig } from '../lib/config.mjs'
+import { isProtectedConfig, isProtectedTest, loadConfig } from '../lib/config.mjs'
 import { shortSha } from '../lib/git.mjs'
 import { CASE_INSENSITIVE_FS, matchesAny } from '../lib/glob.mjs'
 import { claudePreTool, cursorPermission, detectTool, editLocation, editTarget, projectDirFrom, readHookInput, runHook } from '../lib/hookio.mjs'
@@ -35,12 +35,12 @@ runHook(async () => {
   const config = await loadConfig(root)
   const task = await currentTask(root)
 
-  if (task && task.testsApprovedAt && matchesAny(rel, config.protect.tests, opts)) {
+  if (task && task.testsApprovedAt && isProtectedTest(rel, config)) {
     const reason = `PAACM: ${rel} is a test file, and the tests were approved at ${shortSha(task.testsApprovedAt)}. Tests are read-only during implementation. If this test is wrong or contradicts the specification, stop with BLOCKED: trigger 4 and show the conflicting lines.`
     return deny(reason)
   }
 
-  if (matchesAny(rel, config.protect.config, opts)) {
+  if (isProtectedConfig(rel, config)) {
     const reason = `PAACM: ${rel} is executable configuration (agent settings, hooks, CI, or the check manifest). Change it only if the human explicitly asked for this specific change.`
     if (tool === 'claude') return claudePreTool('ask', reason)
     return cursorPermission('deny', `${reason} Ask the human in the conversation; they can make the edit, or remove the pattern from protect.config in .agent/paacm.json for the duration of the change.`)
