@@ -201,6 +201,18 @@ test('shell guard: skipping git hooks needs approval', () => {
     'export SKIP=lint',
     'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null git commit -m x',
     "export GIT_CONFIG_PARAMETERS=\"'core.hooksPath=/tmp/none'\"",
+    'git commit -n&&true',
+    'git commit -n;true',
+    'git commit -n>out',
+    'git commit -n&',
+    'git commit -nm"msg"',
+    "git commit -nm'msg'",
+    "git -c 'core.hooksPath=/tmp/h' commit -m x",
+    'git -c "core.hooksPath=/tmp/h" commit -m x',
+    "git config 'core.hooksPath' /tmp/h",
+    "HUSKY='0' git commit -m x",
+    'HUSKY="0" git commit -m x',
+    "LEFTHOOK='0' git commit -m x",
   ]
   for (const command of skips) {
     const v = evaluateCommand(command)
@@ -214,7 +226,7 @@ test('shell guard: skipping git hooks needs approval', () => {
 })
 
 test('shell guard: deploy commands are caught with global options before the subcommand', () => {
-  for (const command of ['terraform -chdir=infra apply', 'tofu -chdir=x destroy -auto-approve', 'kubectl --context prod apply -f x.yaml', 'helm --kube-context prod upgrade app ./chart', 'docker --context remote push registry/app:1', 'docker image push registry/app:1']) {
+  for (const command of ['terraform -chdir=infra apply', 'tofu -chdir=x destroy -auto-approve', 'kubectl --context prod apply -f x.yaml', 'helm --kube-context prod upgrade app ./chart', 'docker --context remote push registry/app:1', 'docker image push registry/app:1', 'docker buildx build --push -t app .', 'docker build -t app . --push']) {
     assert.equal(evaluateCommand(command)?.id, 'publish-deploy', command)
   }
   for (const command of ['terraform -chdir=infra plan -out=apply.plan', 'kubectl get pods -l action=delete', 'helm template app ./chart', 'docker build -t app .']) {
@@ -243,4 +255,10 @@ test('blocking a task and starting a new one cannot leave a changed approved tes
   await writeFiles(dir, { 'test/a.test.js': 'ok\n' })
   commitAll(dir, 'undo the edit')
   assert.equal(runtime(dir, 'task', 'start', '--slug', 'fresh', '--route', 'FAST', '--summary', 'x').code, 0, 'with the change undone a new task may start')
+})
+
+test('shell guard: moving a ref directly needs approval', () => {
+  for (const command of ['git update-ref refs/remotes/origin/side HEAD', 'git update-ref -d refs/heads/main']) {
+    assert.equal(evaluateCommand(command)?.id, 'git-destructive', command)
+  }
 })
