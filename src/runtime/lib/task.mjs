@@ -2,7 +2,7 @@
 // append-only progress log. All writes are atomic.
 import { appendFile, mkdir, readdir, rm } from 'node:fs/promises'
 import path from 'node:path'
-import { listFiles, readJsonOrNull, readTextOrNull, stableJson, writeFileAtomic } from './fs.mjs'
+import { readJsonOrNull, readTextOrNull, stableJson, writeFileAtomic } from './fs.mjs'
 import { GIT_BUFFER, generatedPaths, head, shortSha, uncommittedPaths, workingTreeDiff } from './git.mjs'
 import { auditTask } from './audit.mjs'
 import { isProtectedTest, loadConfig, tierAtLeast, tierForRoute } from './config.mjs'
@@ -308,6 +308,26 @@ const DIFF_BUDGET = 512 * 1024
 const NOT_EVIDENCE = new Set(['state.json', 'progress.md', 'SPEC.md', 'PLAN.md', 'REPORT.md', 'features.json', 'review-input.md', 'gate.log'])
 const bytes = (text) => Buffer.byteLength(text, 'utf8')
 
+// The regular files under a task folder, as sorted POSIX paths. Symbolic links
+// and folders that cannot be read are skipped, so one of them never hides the
+// evidence the writer saved.
+async function taskFiles(dir, rel = '') {
+  let entries
+  try {
+    entries = await readdir(rel ? path.join(dir, ...rel.split('/')) : dir, { withFileTypes: true })
+  } catch {
+    return []
+  }
+  entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+  const files = []
+  for (const entry of entries) {
+    const child = rel ? `${rel}/${entry.name}` : entry.name
+    if (entry.isDirectory()) files.push(...(await taskFiles(dir, child)))
+    else if (entry.isFile()) files.push(child)
+  }
+  return files
+}
+
 // A C-style quoted string at the start of `s` (as git quotes unusual file
 // names), decoded, or null.
 function unquote(s) {
@@ -431,12 +451,8 @@ export async function writeReviewInput(projectDir, config) {
   if (merged.length) {
     evidence.push('', 'Protected configuration that arrived by merging a branch already on a remote, such as the base branch (reviewed there, not part of this change):', ...merged.map((w) => `- ${w.path}: protected configuration changed by a merge`))
   }
-  try {
-    const saved = (await listFiles(dir)).filter((p) => !NOT_EVIDENCE.has(p) && !p.startsWith('inputs/') && !p.startsWith('review-diffs/'))
-    if (saved.length) evidence.push('', 'Files the writer saved for reviewers (read each one):', ...saved.map((p) => `- ${inTask(p)}`))
-  } catch (error) {
-    evidence.push('', `The task folder could not be listed for saved evidence (${error.message}); ask the writer which files to read.`)
-  }
+  const saved = (await taskFiles(dir)).filter((p) => !NOT_EVIDENCE.has(p) && !p.startsWith('inputs/') && !p.startsWith('review-diffs/'))
+  if (saved.length) evidence.push('', 'Files the writer saved for reviewers (read each one):', ...saved.map((p) => `- ${inTask(p)}`))
 
   const checklist = sectionOf(await readExtension(projectDir, '08-review'), 'Reviewer checklist')
   const text = [

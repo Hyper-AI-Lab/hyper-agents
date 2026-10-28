@@ -145,3 +145,14 @@ test('a diff with very many backtick runs gets a fence without overflowing', asy
   const text = await reviewInput(dir)
   assert.match(text, /^`{3,}diff$/m)
 })
+
+test('a symbolic link in the task folder does not hide the files saved for reviewers', { skip: process.platform === 'win32' && 'symbolic links need privileges on Windows' }, async (t) => {
+  const dir = await started(t)
+  const id = `${today()}-rv`
+  await writeFiles(dir, { [`.agent/tasks/${id}/notes-for-review.md`]: 'look at the cache\n', 'src/a.js': 'export const a = 4\n' })
+  symlinkSync('notes-for-review.md', path.join(dir, '.agent', 'tasks', id, 'scratch-link'))
+  const text = await reviewInput(dir)
+  const evidence = text.slice(text.indexOf('## Evidence'), text.indexOf('## Changed files'))
+  assert.match(evidence, new RegExp(`\\.agent/tasks/${id}/notes-for-review\\.md`))
+  assert.doesNotMatch(evidence, /could not be listed|scratch-link/)
+})
