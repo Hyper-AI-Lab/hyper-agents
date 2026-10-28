@@ -89,23 +89,34 @@ export function toProjectPath(projectDir, filePath) {
   return rel.split(path.sep).join('/')
 }
 
-// The worktree an edited file belongs to (`root`) and its POSIX path there
-// (`rel`), or null when the file is outside the project. A file in another
-// worktree of the project's repository, next to it or nested in it, belongs to
-// that worktree and is judged by its configuration and task. A file in a
-// submodule belongs to the project that contains it. When the project folder is
-// not in a git repository, a file in any checkout below it is judged by that
-// checkout.
-export function editLocation(projectDir, filePath) {
+// The project an edited file is judged by (`root`, whose configuration and task
+// apply) and the file's POSIX path there (`rel`), or null when the file is
+// outside every project the session covers. Projects are found by worktree,
+// never by a nested .agent/paacm.json, so creating one cannot set up a second
+// set of rules:
+//   - a file in the session project's own worktree (a submodule included) is
+//     judged by the session project, or by the worktree's root when it lies
+//     outside that project;
+//   - a file in another worktree of the same repository, next to it or nested
+//     in it, by the project at the same place in that worktree;
+//   - when the session's folder (`anchor`) is not in a git repository, a file in
+//     any checkout below it by that checkout's root.
+export function editLocation(projectDir, filePath, anchor = projectDir) {
   if (typeof filePath !== 'string' || filePath === '') return null
   const abs = realPath(path.resolve(projectDir, filePath))
-  const root = findProjectDir(path.dirname(abs))
-  // A session folder outside git holds checkouts: each file is judged by its own.
-  const judged = worktreeRoot(root) !== null && (worktreeRoot(projectDir) === null || sameRepository(root, projectDir))
-  const rel = judged ? toProjectPath(root, abs) : null
-  if (rel) return { root, rel }
-  const inProject = toProjectPath(projectDir, abs)
-  return inProject ? { root: path.resolve(projectDir), rel: inProject } : null
+  const project = realPath(path.resolve(projectDir))
+  const fileTree = worktreeRoot(path.dirname(abs))
+  const projectTree = worktreeRoot(project)
+  const at = (root) => {
+    const rel = toProjectPath(root, abs)
+    return rel ? { root, rel } : null
+  }
+  if (fileTree !== null && projectTree !== null) {
+    if (fileTree === projectTree) return at(project) ?? at(fileTree)
+    if (sameRepository(fileTree, projectTree)) return at(path.join(fileTree, path.relative(projectTree, project))) ?? at(fileTree)
+  }
+  if (fileTree !== null && worktreeRoot(path.resolve(anchor)) === null) return at(fileTree)
+  return at(project)
 }
 
 // The target file of an edit or write tool call. Claude Code documents

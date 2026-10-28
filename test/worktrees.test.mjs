@@ -124,3 +124,12 @@ test('with a session root that is not a git repository, edits and stops are judg
   const stop = hook('stop-gate', { hook_event_name: 'Stop', stop_hook_active: false, cwd: app }, { projectDir: ws })
   assert.equal(stop.json?.decision, 'block')
 })
+
+test('a nested .agent/paacm.json does not become a second set of protect rules', async (t) => {
+  const dir = await repo(t, { files: { ...files, 'sub/test/b.test.js': 'ok\n' } })
+  approvedTask(dir, 'nested-config')
+  assert.equal(decision(edit(dir, path.join(dir, 'sub', '.agent', 'paacm.json'))), 'ask', 'creating it is a configuration change')
+  await writeFiles(dir, { 'sub/.agent/paacm.json': JSON.stringify({ protect: { tests: [], config: [] } }) })
+  assert.equal(decision(edit(dir, path.join(dir, 'sub', 'test', 'b.test.js'))), 'deny', 'the session project still judges files in its own worktree')
+  assert.equal(decision(edit(dir, path.join(dir, 'sub', 'test', 'b.test.js'), { cwd: path.join(dir, 'sub') })), 'deny')
+})
