@@ -44,3 +44,14 @@ test('a check whose program is missing is reported as a missing tool, not as fai
   assert.doesNotMatch(stop.json.reason, /Fix the cause without editing tests/)
   assert.doesNotMatch(stop.json.reason, /Ask the human to install the tool, or/, 'stopping to wait for a tool needs the block, not a plain question')
 })
+
+test('a check that prints without end leaves a gate log of bounded size', async (t) => {
+  const huge = `quick|huge|node -e "const s = 'y'.repeat(1 << 20); for (let i = 0; i < 20; i++) process.stdout.write(s)"`
+  const dir = await repo(t, { files: { '.agent/checks.conf': `${huge}\n` } })
+  runtime(dir, 'task', 'start', '--slug', 'big', '--route', 'FAST', '--summary', 'x')
+  assert.equal(runtime(dir, 'gate', '--quiet').code, 0)
+  const log = await read(dir, `.agent/tasks/${today()}-big/gate.log`)
+  assert.ok(log.startsWith('[… earlier output dropped'), 'the start is dropped, and it says so')
+  assert.ok(log.length < 8.5 * 1024 * 1024, `log length ${log.length}`)
+  assert.match(log, /PASSED: 1 check\(s\)[\s\S]*Full output:/)
+})

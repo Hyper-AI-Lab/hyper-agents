@@ -225,7 +225,7 @@ test('shell guard: deploy commands are caught with global options before the sub
 test('protect: CI actions and git-hook managers are protected configuration by default', async (t) => {
   const dir = await repo(t, { files: { 'src/a.js': 'a\n' } })
   const edit = (rel) => hook('protect', { hook_event_name: 'PreToolUse', tool_name: 'Write', tool_input: { file_path: path.join(dir, rel) } }, { projectDir: dir })
-  for (const rel of ['.github/actions/build/action.yml', '.husky/pre-commit', '.pre-commit-config.yaml', 'lefthook.yml', 'lefthook.yaml', '.lefthook.yml', 'lefthook-local.yml']) {
+  for (const rel of ['.github/actions/build/action.yml', '.husky/pre-commit', '.pre-commit-config.yaml', 'lefthook.yml', 'lefthook.yaml', '.lefthook.yml', '.lefthook.yaml', 'lefthook.toml', '.config/lefthook.json', 'lefthook-local.yml', '.lefthook-local.jsonc']) {
     assert.equal(edit(rel).json?.hookSpecificOutput.permissionDecision, 'ask', rel)
   }
   assert.equal(edit('src/a.js').json, null)

@@ -60,23 +60,33 @@ export async function runGate(projectDir, { tier, log = () => {}, sink } = {}) {
   const state = await currentTask(projectDir)
   // With a task, the whole run (the gate's lines and every check's output) is
   // also saved as .agent/tasks/<task>/gate.log, for the writer, the reviewer and
-  // the report; the console can then stay short (paacm gate --quiet).
-  const transcript = []
+  // the report; the console can then stay short (paacm gate --quiet). Only the
+  // last LOG_LIMIT characters are kept, so a check that prints without end
+  // cannot exhaust the memory of the gate (or of the stop hook running it).
+  let transcript = ''
+  let dropped = false
+  const keep = (text) => {
+    transcript += text
+    if (transcript.length > 2 * LOG_LIMIT) {
+      transcript = transcript.slice(-LOG_LIMIT)
+      dropped = true
+    }
+  }
   const userLog = log
   const userSink = sink
   log = (line) => {
-    transcript.push(`${line}\n`)
+    keep(`${line}\n`)
     userLog(line)
   }
   sink = (text) => {
-    transcript.push(text)
+    keep(text)
     if (userSink) userSink(text)
   }
   const saveLog = async () => {
     if (!state) return
     log(`Full output: ${TASKS_DIR}/${state.id}/gate.log`)
-    let text = transcript.join('')
-    if (text.length > LOG_LIMIT) text = `[… earlier output dropped; the last ${LOG_LIMIT} characters follow …]\n${text.slice(-LOG_LIMIT)}`
+    const cut = dropped || transcript.length > LOG_LIMIT
+    const text = cut ? `[… earlier output dropped; the last ${LOG_LIMIT} characters follow …]\n${transcript.slice(-LOG_LIMIT)}` : transcript
     await writeFileAtomic(path.join(taskDir(projectDir, state.id), 'gate.log'), text)
   }
   const requiredTier = tierForRoute(config, state)
