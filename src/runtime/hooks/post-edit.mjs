@@ -1,11 +1,15 @@
 // Post-edit checks (Claude Code PostToolUse on edit tools, Cursor postToolUse on
 // Write). Runs the commands configured in .agent/paacm.json `postEdit` whose glob
 // matches the edited file, with `{file}` replaced by the file's path, and feeds
-// any failure back to the agent. Does nothing when no command matches.
+// any failure back to the agent. Does nothing when no command matches. When the
+// session's folder is not a git repository, it first marks the edited checkout,
+// so that a failing gate there holds the session's stop.
 import { spawnSync } from 'node:child_process'
 import { loadConfig } from '../lib/config.mjs'
 import { matchesAny } from '../lib/glob.mjs'
-import { detectTool, editLocation, editTarget, emit, projectDirFrom, readHookInput, runHook } from '../lib/hookio.mjs'
+import { detectTool, editLocation, editTarget, emit, projectDirsFrom, readHookInput, runHook } from '../lib/hookio.mjs'
+import { worktreeRoot } from '../lib/project.mjs'
+import { markEdited, sessionIdFrom } from '../lib/session.mjs'
 
 const TIMEOUT_MS = 120_000
 const quote = (p) => (process.platform === 'win32' ? `"${p.replace(/"/g, '""')}"` : `'${p.replace(/'/g, "'\\''")}'`)
@@ -13,14 +17,15 @@ const quote = (p) => (process.platform === 'win32' ? `"${p.replace(/"/g, '""')}"
 runHook(async () => {
   const input = await readHookInput()
   const tool = detectTool(input)
-  const projectDir = projectDirFrom(input)
+  const { primary, anchor } = projectDirsFrom(input)
   const done = () => {
     if (tool === 'cursor') emit({})
   }
   const target = editTarget(input.tool_input) ?? input.file_path
-  const location = target ? editLocation(projectDir, target) : null
+  const location = target ? editLocation(primary, target, anchor) : null
   if (!location || location.rel.startsWith('.agent/tasks/')) return done()
   const { root, rel } = location
+  if (worktreeRoot(anchor) === null) await markEdited(root, sessionIdFrom(input))
   const config = await loadConfig(root)
   const commands = config.postEdit.filter((e) => matchesAny(rel, [e.glob]))
   if (commands.length === 0) return done()

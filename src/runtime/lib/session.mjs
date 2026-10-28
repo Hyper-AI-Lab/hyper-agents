@@ -3,6 +3,7 @@
 // baseline lives in the worktree's own git directory (paacm-sessions/), which
 // belongs to the clone's owner: never in a temporary folder that other accounts
 // on the machine share, and never in the working tree.
+import { existsSync } from 'node:fs'
 import { mkdir, readdir, readFile, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { readJsonOrNull, sha256, writeFileAtomic } from './fs.mjs'
@@ -16,12 +17,15 @@ export function sessionIdFrom(input) {
   return typeof id === 'string' && id !== '' ? id : null
 }
 
-// <git directory>/paacm-sessions/<hash>.json, or null outside a git repository.
-function baselineFile(projectDir, sessionId) {
+// <git directory>/paacm-sessions/<name>, or null outside a git repository.
+function sessionFile(projectDir, name) {
   const r = git(projectDir, ['rev-parse', '--absolute-git-dir'], { allowFail: true })
   if (!r.ok) return null
-  return path.join(r.stdout.trim(), 'paacm-sessions', `${sha256(`${path.resolve(projectDir)}\0${sessionId}`).slice(0, 32)}.json`)
+  return path.join(r.stdout.trim(), 'paacm-sessions', name)
 }
+
+const baselineFile = (projectDir, sessionId) => sessionFile(projectDir, `${sha256(`${path.resolve(projectDir)}\0${sessionId}`).slice(0, 32)}.json`)
+const editedFile = (projectDir, sessionId) => sessionFile(projectDir, `${sha256(sessionId).slice(0, 32)}.edited`)
 
 // Removes baselines (and leftover temporary files) older than 30 days.
 async function prune(dir) {
@@ -55,6 +59,29 @@ export async function recordBaseline(projectDir, sessionId) {
   await mkdir(path.dirname(file), { recursive: true, mode: 0o700 })
   await prune(path.dirname(file))
   await writeFileAtomic(file, JSON.stringify({ files }), 0o600)
+}
+
+// Marks the checkout at projectDir as edited by this session. Used when the
+// session's folder is not a git repository and holds several checkouts.
+export async function markEdited(projectDir, sessionId) {
+  const file = sessionId ? editedFile(projectDir, sessionId) : null
+  if (!file || existsSync(file)) return
+  await mkdir(path.dirname(file), { recursive: true, mode: 0o700 })
+  await writeFileAtomic(file, '', 0o600)
+}
+
+// The checkouts directly inside a folder that is not a git repository, with an
+// open task, that this session marked as edited.
+export async function editedCheckouts(folder, sessionId) {
+  if (!sessionId) return []
+  const entries = await readdir(folder, { withFileTypes: true }).catch(() => [])
+  return entries
+    .filter((e) => e.isDirectory() && existsSync(path.join(folder, e.name, '.agent', 'tasks', 'CURRENT')))
+    .map((e) => path.join(folder, e.name))
+    .filter((dir) => {
+      const file = editedFile(dir, sessionId)
+      return file !== null && existsSync(file)
+    })
 }
 
 async function readBaseline(file) {

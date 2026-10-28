@@ -7,13 +7,13 @@
 import { isProtectedConfig, isProtectedTest, loadConfig } from '../lib/config.mjs'
 import { shortSha } from '../lib/git.mjs'
 import { CASE_INSENSITIVE_FS, matchesAny } from '../lib/glob.mjs'
-import { claudePreTool, cursorPermission, detectTool, editLocation, editTarget, projectDirFrom, readHookInput, runHook } from '../lib/hookio.mjs'
+import { claudePreTool, cursorPermission, detectTool, editLocation, editTarget, projectDirsFrom, readHookInput, runHook } from '../lib/hookio.mjs'
 import { currentTask } from '../lib/task.mjs'
 
 runHook(async () => {
   const input = await readHookInput()
   const tool = detectTool(input)
-  const projectDir = projectDirFrom(input)
+  const { primary, anchor } = projectDirsFrom(input)
   const allow = () => {
     if (tool === 'cursor') cursorPermission('allow')
   }
@@ -23,7 +23,7 @@ runHook(async () => {
   if (!target) {
     return deny('PAACM: the protect hook could not find the file this edit targets in the tool call, so it cannot check it against the protected paths. Report this to the human; the edit is refused until the hook recognises the tool.')
   }
-  const location = editLocation(projectDir, target)
+  const location = editLocation(primary, target, anchor)
   if (!location) return allow()
   const { root, rel } = location
   const opts = { ignoreCase: CASE_INSENSITIVE_FS }

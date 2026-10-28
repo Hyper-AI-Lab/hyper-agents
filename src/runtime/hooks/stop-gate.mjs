@@ -10,14 +10,16 @@
 //
 // The hook judges the project the agent works in and, when the agent moved into
 // another worktree, the session's own project too: leaving a worktree never
-// releases a failing gate.
+// releases a failing gate. When the session's folder is not a git repository, it
+// also judges each checkout directly inside it that the session edited.
 import { loadConfig, tierAtLeast, tierForRoute } from '../lib/config.mjs'
 import { GATE, recentGate, runGate, worktreeFingerprint } from '../lib/gate.mjs'
 import { committedSince, head, uncommittedPaths } from '../lib/git.mjs'
 import { detectTool, emit, projectDirsFrom, readHookInput, runHook } from '../lib/hookio.mjs'
 import { isMissingTool } from '../lib/runner.mjs'
 import { referencePath } from '../lib/references.mjs'
-import { changedThisSession, sessionIdFrom } from '../lib/session.mjs'
+import { worktreeRoot } from '../lib/project.mjs'
+import { changedThisSession, editedCheckouts, sessionIdFrom } from '../lib/session.mjs'
 import { currentTask, writeState } from '../lib/task.mjs'
 
 const GATED = new Set(['implementing', 'verifying', 'reviewing'])
@@ -149,5 +151,8 @@ runHook(async () => {
 
   const outcomes = [await decide(primary, true)]
   if (anchor !== primary) outcomes.push(await decide(anchor, false))
+  if (worktreeRoot(anchor) === null) {
+    for (const dir of await editedCheckouts(anchor, sessionId)) if (dir !== primary) outcomes.push(await decide(dir, false))
+  }
   respond(outcomes.find((o) => o.kind === 'block') ?? outcomes.find((o) => o.kind === 'guide') ?? ALLOW)
 })

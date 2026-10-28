@@ -133,3 +133,28 @@ test('a nested .agent/paacm.json does not become a second set of protect rules',
   assert.equal(decision(edit(dir, path.join(dir, 'sub', 'test', 'b.test.js'))), 'deny', 'the session project still judges files in its own worktree')
   assert.equal(decision(edit(dir, path.join(dir, 'sub', 'test', 'b.test.js'), { cwd: path.join(dir, 'sub') })), 'deny')
 })
+
+test('with a non-git session folder and cwd in one checkout, the other checkouts keep their rules, and an edited one holds the stop', async (t) => {
+  const ws = tempDir(t)
+  const checkout = async (name, check) => {
+    const dir = path.join(ws, name)
+    await writeFiles(dir, { ...files, '.agent/checks.conf': `quick|unit|${check}\n` })
+    git(dir, 'init', '-q')
+    commitAll(dir, 'base')
+    approvedTask(dir, name)
+    runtime(dir, 'task', 'phase', 'implementing')
+    return dir
+  }
+  const app = await checkout('app', pass)
+  const other = await checkout('other', fail)
+  const session = `ws-${process.pid}`
+  assert.equal(decision(edit(ws, path.join(other, 'test', 'a.test.js'), { cwd: app })), 'deny', "the sibling checkout's approved tests")
+  assert.equal(decision(edit(ws, path.join(other, '.github', 'workflows', 'ci.yml'), { cwd: app })), 'ask')
+
+  const stop = () => hook('stop-gate', { hook_event_name: 'Stop', session_id: session, stop_hook_active: false, cwd: app }, { projectDir: ws })
+  assert.notEqual(stop().json?.decision, 'block', 'a checkout this session never edited does not hold its stop')
+  hook('post-edit', { hook_event_name: 'PostToolUse', session_id: session, tool_name: 'Edit', tool_input: { file_path: path.join(other, 'src', 'a.js') }, cwd: app }, { projectDir: ws })
+  const held = stop()
+  assert.equal(held.json?.decision, 'block', 'the edited checkout with a failing gate holds the stop')
+  assert.match(held.json.reason, /gate failed/)
+})
