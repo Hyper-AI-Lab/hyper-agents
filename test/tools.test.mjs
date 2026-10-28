@@ -166,6 +166,10 @@ test('checkPrograms reads the programs a check command starts', () => {
   assert.deepEqual(checkPrograms('"$TOOL" run'), [])
   assert.deepEqual(checkPrograms("echo 'a && b'"), [])
   assert.deepEqual(checkPrograms('cd infra && ./scripts/test.sh'), ['infra/scripts/test.sh'], 'a script path follows a plain cd')
+  assert.deepEqual(checkPrograms('(cd a && ./run.sh)'), ['a/run.sh'], 'a closing parenthesis is not part of the program')
+  assert.deepEqual(checkPrograms('timeout -s KILL 60 pytest -q'), ['pytest'])
+  assert.deepEqual(checkPrograms('timeout --signal=TERM -k 5 60 pytest'), ['pytest'])
+  assert.deepEqual(checkPrograms('cd "my dir" && ./t.sh && npm test'), ['npm'], 'after a cd the reader cannot follow, script paths are not checked')
 })
 
 test('doctor warns about a check whose program is not installed', async (t) => {

@@ -92,7 +92,7 @@ export async function doctor(args, io) {
         for (const program of checkPrograms(check.command)) {
           if (/[\\/]/.test(program)) {
             if (!existsSync(path.resolve(targetDir, program))) warn(`check ${check.label}: ${program} does not exist, so the check would fail here`)
-          } else if (!onPath(program)) {
+          } else if (!onPath(program, targetDir)) {
             warn(`check ${check.label}: ${program} is not on PATH, so the check would exit 127 here; install it, or record the check under CHECKS NOT RUN where it cannot run`)
           }
         }
@@ -110,8 +110,17 @@ export async function doctor(args, io) {
 const SHELL_WORDS = new Set(
   'cd export set unset test [ [[ true false echo printf exit return if then else elif fi for do done while until case esac ! { } source . eval shift read wait trap ulimit umask alias type hash :'.split(' '),
 )
-// Wrappers that run the command after them (timeout also takes a duration).
-const WRAPPERS = new Set(['env', 'exec', 'command', 'time', 'nohup', 'nice', 'timeout'])
+// Wrappers that run the command after them, with their options that take a
+// value (timeout also takes a duration).
+const WRAPPERS = new Map([
+  ['env', ['-u', '-C', '-S']],
+  ['exec', ['-a']],
+  ['command', []],
+  ['time', ['-f', '-o']],
+  ['nohup', []],
+  ['nice', ['-n']],
+  ['timeout', ['-s', '-k']],
+])
 
 // The commands of a shell command line, split at ; | & && || and newlines
 // outside quotes. `&` in a redirection (2>&1, &>) does not split.
@@ -151,27 +160,44 @@ export function checkPrograms(command) {
   const programs = []
   let dir = ''
   for (const segment of shellSegments(command)) {
-    const words = segment.replace(/^[({\s]+/, '').split(/\s+/)
+    const words = segment.replace(/^[({\s]+/, '').split(/\s+/).map((w) => w.replace(/[)}]+$/, ''))
     let i = 0
     for (;;) {
       const w = words[i]
       if (w === undefined) break
-      if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(w) || (i > 0 && WRAPPERS.has(words[i - 1]) && w.startsWith('-'))) i++
-      else if (WRAPPERS.has(w)) i += w === 'timeout' && /^\d/.test(words[i + 1] ?? '') ? 2 : 1
-      else break
+      if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(w)) {
+        i++
+        continue
+      }
+      if (!WRAPPERS.has(w)) break
+      const takesValue = WRAPPERS.get(w)
+      i++
+      while (words[i]?.startsWith('-')) i += takesValue.includes(words[i]) ? 2 : 1
+      if (w === 'timeout' && /^\d/.test(words[i] ?? '')) i++
     }
     const word = words[i]
-    if (word === 'cd' && words[i + 1] && !/[$`*'"~]/.test(words[i + 1])) dir = path.posix.join(dir, words[i + 1].replace(/\\/g, '/'))
+    if (word === 'cd') {
+      // A target the reader cannot resolve (quoted, expanded) leaves later script
+      // paths unchecked rather than checked in the wrong place.
+      const target = words[i + 1]
+      dir = dir === null || !target || /[$`*'"~]/.test(target) ? null : path.posix.join(dir, target.replace(/\\/g, '/'))
+      continue
+    }
     if (!word || SHELL_WORDS.has(word) || /[$`*'"]/.test(word)) continue
-    const program = /[\\/]/.test(word) && dir ? path.posix.join(dir, word.replace(/\\/g, '/')) : word
+    const isPath = /[\\/]/.test(word)
+    if (isPath && dir === null) continue
+    const program = isPath && dir ? path.posix.join(dir, word.replace(/\\/g, '/')) : word
     if (!programs.includes(program)) programs.push(program)
   }
   return programs
 }
 
-function onPath(command) {
-  const extensions = process.platform === 'win32' ? (process.env.PATHEXT ?? '.EXE;.CMD;.BAT').split(';') : ['']
-  const dirs = (process.env.PATH ?? '').split(path.delimiter).filter(Boolean)
+// Whether a program can be found as a shell would: on PATH, and on Windows, as
+// cmd.exe does, also in the current folder and with its extension written out.
+function onPath(command, cwd) {
+  const windows = process.platform === 'win32'
+  const extensions = windows ? ['', ...(process.env.PATHEXT ?? '.EXE;.CMD;.BAT').split(';')] : ['']
+  const dirs = [...(windows && cwd ? [cwd] : []), ...(process.env.PATH ?? '').split(path.delimiter).filter(Boolean)]
   return dirs.some((dir) => extensions.some((ext) => existsSync(path.join(dir, command + ext))))
 }
 
