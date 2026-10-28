@@ -159,7 +159,7 @@ test('the audit warns about executable configuration changed during the task', a
   await writeFiles(dir, { '.github/workflows/ci.yml': 'on: push\n' })
   const r = runtime(dir, 'audit', '--json')
   assert.equal(r.code, 0)
-  assert.deepEqual(JSON.parse(r.stdout).warnings, [{ path: '.github/workflows/ci.yml', kind: 'config' }])
+  assert.deepEqual(JSON.parse(r.stdout).warnings, [{ path: '.github/workflows/ci.yml', kind: 'config', origin: 'task' }])
 })
 
 test('the runtime finds the project root from a subfolder, and check validates its arguments', async (t) => {

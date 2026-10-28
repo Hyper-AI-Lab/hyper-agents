@@ -81,6 +81,21 @@ export function changedSince(cwd, base) {
   return [...set].sort()
 }
 
+// The paths a task changed itself since `base`: the files of the commits on its
+// own (first-parent) line, the files a merge commit changed itself (conflict
+// resolutions, from git's combined diff), and uncommitted changes. A change that
+// arrived only from a merged branch is not included.
+export function ownChangesSince(cwd, base) {
+  const own = new Set(uncommittedPaths(cwd))
+  if (!head(cwd)) return own
+  const range = base ? `${base}..HEAD` : 'HEAD'
+  for (const kind of [['--no-merges'], ['--merges', '--cc']]) {
+    const r = git(cwd, ['log', '--first-parent', ...kind, '--format=', '--name-only', '-z', '--no-renames', range], { allowFail: true })
+    if (r.ok) for (const p of r.stdout.split('\0')) if (p !== '') own.add(p)
+  }
+  return own
+}
+
 // The change from `base` to the working tree, committed, uncommitted and
 // untracked (unless git ignores the file): `files` ({ path, added, deleted,
 // binary }, in diff order) and the `diff` itself. It is computed in a temporary

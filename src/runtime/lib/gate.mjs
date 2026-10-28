@@ -99,7 +99,9 @@ export async function runGate(projectDir, { tier, log = () => {}, sink } = {}) {
     return state.gateFailures
   }
 
-  for (const w of audit.warnings) log(`WARN protected configuration changed in this task: ${w.path} (the report must state who approved it)`)
+  for (const w of audit.warnings) {
+    log(w.origin === 'merge' ? `NOTE protected configuration changed by a merge, not by this task's own commits: ${w.path}` : `WARN protected configuration changed in this task: ${w.path} (the report must state who approved it)`)
+  }
   if (audit.violations.length) {
     for (const v of audit.violations) log(`PROTECTED ${v.path}${v.detail ? `: ${v.detail}` : ' changed after the tests were approved'}`)
     log('GATE FAILED: protected test files or the gate configuration changed after the tests were approved. Undo those edits, or stop with BLOCKED: trigger 4 if the change is needed. After the human approves it, run paacm task reopen-tests --reason "<the approved change>" (the IDE asks them to confirm), commit the change, then run paacm task approve-tests.')

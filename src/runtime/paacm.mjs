@@ -225,8 +225,12 @@ export async function run(argv, { out = (l) => process.stdout.write(`${l}\n`), e
         else {
           if (!state) out('There is no current task; nothing to audit.')
           for (const v of audit.violations) out(`PROTECTED ${v.path}${v.detail ? `: ${v.detail}` : ' changed after the tests were approved'}`)
-          for (const w of audit.warnings) out(`WARN ${w.path}: protected configuration changed in this task`)
-          if (state && audit.violations.length === 0) out(`Audit clean${audit.warnings.length ? ` (${audit.warnings.length} configuration warning(s))` : ''}.`)
+          for (const w of audit.warnings) {
+            out(w.origin === 'merge' ? `NOTE ${w.path}: protected configuration changed by a merge, not by this task's own commits` : `WARN ${w.path}: protected configuration changed in this task`)
+          }
+          const merged = audit.warnings.filter((w) => w.origin === 'merge').length
+          const own = audit.warnings.length - merged
+          if (state && audit.violations.length === 0) out(`Audit clean${audit.warnings.length ? ` (${own} configuration warning(s)${merged ? `; ${merged} change(s) from merges` : ''})` : ''}.`)
         }
         return audit.violations.length ? EXIT.PROTECTED : EXIT.OK
       }
