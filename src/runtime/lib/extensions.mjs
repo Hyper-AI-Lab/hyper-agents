@@ -41,6 +41,14 @@ function outsideFences(lines) {
   })
 }
 
+// The titles of the level-2 headings ("## <title>") outside fenced code blocks.
+export function levelTwoHeadings(text) {
+  if (!text) return []
+  const lines = text.replace(/\r\n/g, '\n').split('\n')
+  const outside = outsideFences(lines)
+  return lines.filter((l, i) => outside[i] && /^##\s/.test(l)).map((l) => l.replace(/^##\s+/, '').trim())
+}
+
 // The body of a level-2 section ("## <title>") up to the next level-2 heading,
 // or null when the file or the section does not exist. Headings inside fenced
 // code blocks do not count.

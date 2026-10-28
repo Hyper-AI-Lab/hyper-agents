@@ -3,7 +3,7 @@ import { readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { test } from 'node:test'
 import { detectChecks } from '../src/cli/detect.mjs'
-import { codeIntelligencePlugins } from '../src/cli/doctor.mjs'
+import { checkPrograms, codeIntelligencePlugins } from '../src/cli/doctor.mjs'
 import { main } from '../src/cli/main.mjs'
 import { captureIo, cli, read, repo, ROOT, tempDir, writeFiles } from './helpers.mjs'
 
@@ -155,4 +155,34 @@ test('doctor lists project extensions and warns about unknown names and missing 
   assert.doesNotMatch(r.stdout, /not protected configuration/, 'the defaults protect extensions')
   await writeFiles(dir, { '.agent/paacm.json': JSON.stringify({ protect: { config: ['.claude/**'] } }) })
   assert.match(cli(dir, 'doctor').stdout, /! project extensions are not protected configuration: add "\.agent\/extensions\/\*\*" to protect\.config/)
+})
+
+test('checkPrograms reads the programs a check command starts', () => {
+  assert.deepEqual(checkPrograms('FOO=1 eslint . && tsc -p x | tee out 2>&1'), ['eslint', 'tsc', 'tee'])
+  assert.deepEqual(checkPrograms('timeout 60 npm test'), ['npm'])
+  assert.deepEqual(checkPrograms('env -i A=b python3 -m pytest; echo done'), ['python3'])
+  assert.deepEqual(checkPrograms('(cd src && node -e "1") || true'), ['node'])
+  assert.deepEqual(checkPrograms('git diff --check HEAD'), ['git'])
+  assert.deepEqual(checkPrograms('"$TOOL" run'), [])
+  assert.deepEqual(checkPrograms("echo 'a && b'"), [])
+  assert.deepEqual(checkPrograms('cd infra && ./scripts/test.sh'), ['infra/scripts/test.sh'], 'a script path follows a plain cd')
+})
+
+test('doctor warns about a check whose program is not installed', async (t) => {
+  const checks = ['quick|unit|node --version', 'quick|lint|FOO=1 definitely-missing-linter-xyz --check . 2>&1 | tail -5', 'full|e2e|./scripts/missing-e2e.sh --all', 'full|ok|(cd src && node -e "1") || true', '']
+  const dir = await repo(t, { files: { '.agent/checks.conf': checks.join('\n') } })
+  const r = cli(dir, 'doctor')
+  assert.equal(r.code, 0, r.out)
+  assert.match(r.stdout, /! check lint: definitely-missing-linter-xyz is not on PATH, so the check would exit 127 here/)
+  assert.match(r.stdout, /! check e2e: \.\/scripts\/missing-e2e\.sh does not exist/)
+  assert.doesNotMatch(r.stdout, /check (unit|ok):/)
+})
+
+test('doctor says when the review extension has no reviewer checklist, and which sections stay with the writer', async (t) => {
+  const none = await repo(t, { files: { '.agent/checks.conf': 'quick|unit|node --version\n', '.agent/extensions/08-review.md': '# Review\n\n## Reviewers\n\n- also run the security reviewer\n' } })
+  assert.match(cli(none, 'doctor').stdout, /! \.agent\/extensions\/08-review\.md has no "## Reviewer checklist" section/)
+  const some = await repo(t, { files: { '.agent/checks.conf': 'quick|unit|node --version\n', '.agent/extensions/08-review.md': '## Reviewer checklist\n\n- item\n\n```md\n## not a section\n```\n\n## For the writer\n\n- run x\n' } })
+  const r = cli(some, 'doctor').stdout
+  assert.match(r, /✓ \.agent\/extensions\/08-review\.md: the reviewer gets "## Reviewer checklist"; "## For the writer" stays with the writer/)
+  assert.doesNotMatch(r, /not a section/)
 })

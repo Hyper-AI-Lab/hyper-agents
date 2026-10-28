@@ -8,7 +8,7 @@ import { validateAgent, validateClaudeHooks, validateCursorHooks, validateSkill 
 import { blockBody } from '../runtime/lib/blocks.mjs'
 import { missingTiers, parseManifest } from '../runtime/lib/checks.mjs'
 import { loadConfig, validateConfig } from '../runtime/lib/config.mjs'
-import { EXTENSIONS_DIR, listExtensions } from '../runtime/lib/extensions.mjs'
+import { EXTENSIONS_DIR, levelTwoHeadings, listExtensions, readExtension, sectionOf } from '../runtime/lib/extensions.mjs'
 import { fromPosix, listFiles, readJsonOrNull, readTextOrNull, sha256 } from '../runtime/lib/fs.mjs'
 import { head, isRepo } from '../runtime/lib/git.mjs'
 import { matchesAny } from '../runtime/lib/glob.mjs'
@@ -88,6 +88,15 @@ export async function doctor(args, io) {
       const deep = config?.gate?.deepTier ?? 'full'
       const gaps = missingTiers(checks, deep)
       if (checks.length && gaps.length) warn(`tier(s) ${gaps.join(', ')} have no checks; DEEP tasks will stop at the gate with exit 3 until they are configured`)
+      for (const check of checks) {
+        for (const program of checkPrograms(check.command)) {
+          if (/[\\/]/.test(program)) {
+            if (!existsSync(path.resolve(targetDir, program))) warn(`check ${check.label}: ${program} does not exist, so the check would fail here`)
+          } else if (!onPath(program)) {
+            warn(`check ${check.label}: ${program} is not on PATH, so the check would exit 127 here; install it, or record the check under CHECKS NOT RUN where it cannot run`)
+          }
+        }
+      }
     } catch (error) {
       fail(`.agent/checks.conf: ${error.message}`)
     }
@@ -95,6 +104,69 @@ export async function doctor(args, io) {
   if (config === null || validateConfig(config).length === 0) await checkExtensions(targetDir, { ok, warn })
   await checkCodeIntelligence(targetDir, { ok, warn })
   return finish(io, results)
+}
+
+// Shell words that are not programs to look up: builtins and keywords.
+const SHELL_WORDS = new Set(
+  'cd export set unset test [ [[ true false echo printf exit return if then else elif fi for do done while until case esac ! { } source . eval shift read wait trap ulimit umask alias type hash :'.split(' '),
+)
+// Wrappers that run the command after them (timeout also takes a duration).
+const WRAPPERS = new Set(['env', 'exec', 'command', 'time', 'nohup', 'nice', 'timeout'])
+
+// The commands of a shell command line, split at ; | & && || and newlines
+// outside quotes. `&` in a redirection (2>&1, &>) does not split.
+function shellSegments(command) {
+  const out = []
+  let current = ''
+  let quote = null
+  for (let i = 0; i < command.length; i++) {
+    const c = command[i]
+    if (quote) {
+      current += c
+      if (c === '\\' && quote === '"') current += command[++i] ?? ''
+      else if (c === quote) quote = null
+      continue
+    }
+    if (c === "'" || c === '"') {
+      quote = c
+      current += c
+    } else if (c === '&' && (/[<>]$/.test(current) || command[i + 1] === '>')) {
+      current += c
+    } else if (c === ';' || c === '|' || c === '&' || c === '\n') {
+      out.push(current)
+      current = ''
+    } else {
+      current += c
+    }
+  }
+  out.push(current)
+  return out.map((s) => s.trim()).filter(Boolean)
+}
+
+// The programs a check command starts, as far as a plain reading of the command
+// line can tell: the first word of each command, after variable assignments and
+// wrappers. Builtins, and words the shell would expand, are left out. A path is
+// given relative to the project, following a plain `cd` earlier in the line.
+export function checkPrograms(command) {
+  const programs = []
+  let dir = ''
+  for (const segment of shellSegments(command)) {
+    const words = segment.replace(/^[({\s]+/, '').split(/\s+/)
+    let i = 0
+    for (;;) {
+      const w = words[i]
+      if (w === undefined) break
+      if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(w) || (i > 0 && WRAPPERS.has(words[i - 1]) && w.startsWith('-'))) i++
+      else if (WRAPPERS.has(w)) i += w === 'timeout' && /^\d/.test(words[i + 1] ?? '') ? 2 : 1
+      else break
+    }
+    const word = words[i]
+    if (word === 'cd' && words[i + 1] && !/[$`*'"~]/.test(words[i + 1])) dir = path.posix.join(dir, words[i + 1].replace(/\\/g, '/'))
+    if (!word || SHELL_WORDS.has(word) || /[$`*'"]/.test(word)) continue
+    const program = /[\\/]/.test(word) && dir ? path.posix.join(dir, word.replace(/\\/g, '/')) : word
+    if (!programs.includes(program)) programs.push(program)
+  }
+  return programs
 }
 
 function onPath(command) {
@@ -130,6 +202,17 @@ async function checkExtensions(targetDir, { ok, warn }) {
   )
   const unknown = names.filter((n) => !references.has(n))
   for (const n of unknown) warn(`${EXTENSIONS_DIR}/${n}.md matches no paacm reference, so the agent never reads it (names: ${[...references].sort().join(', ')})`)
+  if (names.includes('08-review')) {
+    // Only this section reaches the fresh-context reviewer (review-input.md).
+    const text = await readExtension(targetDir, '08-review')
+    const others = levelTwoHeadings(text).filter((h) => h.toLowerCase() !== 'reviewer checklist')
+    const writer = others.length ? `; ${others.map((h) => `"## ${h}"`).join(', ')} ${others.length === 1 ? 'stays' : 'stay'} with the writer` : ''
+    if (sectionOf(text, 'Reviewer checklist') === null) {
+      warn(`${EXTENSIONS_DIR}/08-review.md has no "## Reviewer checklist" section, so the reviewer gets no project checklist; put each item the reviewer must check under that heading`)
+    } else {
+      ok(`${EXTENSIONS_DIR}/08-review.md: the reviewer gets "## Reviewer checklist"${writer}`)
+    }
+  }
   const config = await loadConfig(targetDir)
   const unprotected = names.filter((n) => !matchesAny(`${EXTENSIONS_DIR}/${n}.md`, config.protect.config))
   if (unprotected.length) warn(`project extensions are not protected configuration: add "${EXTENSIONS_DIR}/**" to protect.config in .agent/paacm.json (${unprotected.join(', ')})`)
