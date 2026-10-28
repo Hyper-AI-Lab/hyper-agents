@@ -46,9 +46,9 @@ Task:
 
 Verification:
   check --list
-  check --tier <quick|full|security> [--json]
+  check --tier <quick|full|security> [--quiet] [--json]
   audit [--json]
-  gate [--tier <quick|full|security>] [--json]
+  gate [--tier <quick|full|security>] [--quiet] [--json]
 
 Exit codes: 0 success, 1 failure or refused, 2 usage or configuration error,
 3 a required check tier is not configured, 4 a protected test file or the gate
@@ -158,6 +158,15 @@ async function taskCommand(args, out, projectDir) {
 
 class UsageError extends Error {}
 
+// For --quiet: the last lines of the failing check, in place of the streamed output.
+function printFailingTail(out, results) {
+  const failed = results?.find((r) => r.exitCode !== 0)
+  if (!failed) return
+  const lines = (failed.outputTail || '').trimEnd().split('\n').slice(-30)
+  out(`Last ${lines.length} line(s) of ${failed.label}:`)
+  out(lines.join('\n'))
+}
+
 // What a passing gate leads to for the current task.
 function afterGate(projectDir, result) {
   const task = result.task
@@ -179,7 +188,7 @@ export async function run(argv, { out = (l) => process.stdout.write(`${l}\n`), e
       case 'task':
         return await taskCommand(args, out, projectDir)
       case 'check': {
-        const { values } = parseArgs({ args, options: { list: { type: 'boolean' }, tier: { type: 'string' }, json: { type: 'boolean' } }, strict: true })
+        const { values } = parseArgs({ args, options: { list: { type: 'boolean' }, tier: { type: 'string' }, json: { type: 'boolean' }, quiet: { type: 'boolean' } }, strict: true })
         const checks = await loadChecks(projectDir)
         if (values.list) {
           if (checks.length === 0) out('No checks are configured in .agent/checks.conf.')
@@ -196,12 +205,15 @@ export async function run(argv, { out = (l) => process.stdout.write(`${l}\n`), e
         const config = await loadConfig(projectDir)
         const result = await runChecks(projectDir, checks, values.tier, {
           timeoutSec: config.checks.timeoutSec,
-          sink: values.json ? undefined : (t) => process.stdout.write(t),
+          sink: values.json || values.quiet ? undefined : (t) => process.stdout.write(t),
           log: values.json ? () => {} : out,
         })
         const code = result.passed ? EXIT.OK : EXIT.FAILED
         if (values.json) out(JSON.stringify(result))
-        else out(`paacm check: exit ${code}`)
+        else {
+          if (values.quiet) printFailingTail(out, result.results)
+          out(`paacm check: exit ${code}`)
+        }
         return code
       }
       case 'audit': {
@@ -219,12 +231,13 @@ export async function run(argv, { out = (l) => process.stdout.write(`${l}\n`), e
         return audit.violations.length ? EXIT.PROTECTED : EXIT.OK
       }
       case 'gate': {
-        const { values } = parseArgs({ args, options: { tier: { type: 'string' }, json: { type: 'boolean' } }, strict: true })
+        const { values } = parseArgs({ args, options: { tier: { type: 'string' }, json: { type: 'boolean' }, quiet: { type: 'boolean' } }, strict: true })
         const result = await runGate(projectDir, {
           tier: values.tier,
           log: values.json ? () => {} : out,
-          sink: values.json ? undefined : (t) => process.stdout.write(t),
+          sink: values.json || values.quiet ? undefined : (t) => process.stdout.write(t),
         })
+        if (values.quiet && !values.json) printFailingTail(out, result.results)
         if (values.json) {
           const { task, ...rest } = result
           out(JSON.stringify(rest))

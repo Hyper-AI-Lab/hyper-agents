@@ -8,6 +8,7 @@ import { loadConfig, tierAtLeast, tierForRoute } from '../lib/config.mjs'
 import { GATE, recentGate, runGate, worktreeFingerprint } from '../lib/gate.mjs'
 import { changedSince, head, uncommittedPaths } from '../lib/git.mjs'
 import { detectTool, emit, projectDirFrom, readHookInput, runHook } from '../lib/hookio.mjs'
+import { isMissingTool } from '../lib/runner.mjs'
 import { referencePath } from '../lib/references.mjs'
 import { changedThisSession, sessionIdFrom } from '../lib/session.mjs'
 import { currentTask, writeState } from '../lib/task.mjs'
@@ -58,6 +59,8 @@ runHook(async () => {
     return block(message)
   }
   const waiting = 'If you are waiting for the human (a question or an approval), say so in your answer and stop again.'
+  const missingTool = (label, details) =>
+    `PAACM gate could not run check ${label}: a command was not found.${details}\n\nThis is the environment, not the code, so do not change code to get around it. Ask the human to install the tool, or record the check under CHECKS NOT RUN and stop with \`paacm task block --trigger 2 --reason "<the missing tool>"\`.`
 
   const changes = task.status === 'triaged' && changedSince(projectDir, task.baseCommit).some((p) => !isTaskFile(p))
   if (changes && task.route !== 'FAST') {
@@ -83,6 +86,7 @@ runHook(async () => {
   const duplicate = recentGate(projectDir, task)
   if (duplicate && tierAtLeast(duplicate.tier, required)) {
     if (duplicate.passed) return finish()
+    if (duplicate.missingTool) return block(missingTool(duplicate.failed, ' See the previous gate output.'))
     return block(`PAACM gate failed on this exact working tree a moment ago (check ${duplicate.failed}); see the previous gate message, fix the cause, then finish again.`)
   }
 
@@ -98,7 +102,9 @@ runHook(async () => {
     )
   }
 
-  const tail = result.results?.length ? (result.results[result.results.length - 1].outputTail || '').trim().split('\n').slice(-30).join('\n') : ''
+  const last = result.results?.length ? result.results[result.results.length - 1] : null
+  const tail = last ? (last.outputTail || '').trim().split('\n').slice(-30).join('\n') : ''
+  if (last && isMissingTool(last)) return block(missingTool(last.label, ` The check exited ${last.exitCode}.\n\n${log}${tail ? `\n\nLast output of the check:\n${tail}` : ''}`))
   if (result.gateFailures >= result.retryCap) {
     return block(
       `PAACM gate failed ${result.gateFailures} times in a row; the retry cap (${result.retryCap}) is reached. Do not try another fix. Run \`paacm task block --trigger 5 --reason "<what still fails and why>"\`, write REPORT.md, and end your turn with a BLOCKED: line.\n\n${log}`,

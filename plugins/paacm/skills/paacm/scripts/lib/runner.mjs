@@ -64,6 +64,13 @@ export function runOne(projectDir, check, { timeoutSec, sink } = {}) {
   })
 }
 
+// Whether a check failed because its shell could not find a command: exit 127
+// from a POSIX shell (also reported when the shell itself cannot start), 9009
+// from cmd.exe on Windows.
+export function isMissingTool(result) {
+  return result.exitCode === 127 || (process.platform === 'win32' && result.exitCode === 9009)
+}
+
 // Runs every check of the mode's tiers in manifest order and stops at the first
 // failure. `log` receives one line per event (RUN, PASS, FAIL, summary).
 export async function runChecks(projectDir, checks, mode, { timeoutSec, sink, log = () => {} } = {}) {
@@ -79,6 +86,9 @@ export async function runChecks(projectDir, checks, mode, { timeoutSec, sink, lo
       log(`PASS [${check.tier}] ${check.label} (${secs}s)`)
     } else {
       log(`FAIL [${check.tier}] ${check.label} exit ${r.exitCode}${r.timedOut ? ` (timed out after ${timeoutSec}s)` : ''} (${secs}s)`)
+      if (isMissingTool(r)) {
+        log(`HINT [${check.tier}] ${check.label}: a command was not found (exit ${r.exitCode}). This is the environment, not the code: install the missing tool, or record the check under CHECKS NOT RUN and ask the human (trigger 2).`)
+      }
       break
     }
   }
