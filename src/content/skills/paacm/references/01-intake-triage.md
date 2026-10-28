@@ -21,10 +21,10 @@ Use the project default autonomy (`autonomy` in `.agent/paacm.json`) unless the 
 ## 3. Start the task
 
 ```sh
-paacm task start --slug <short-slug> --route <FAST|STANDARD|DEEP> [--high-stakes] [--autonomy L0|L1|L2|L3] --summary "<the restatement>"
+paacm task start --slug <short-slug> --route <FAST|STANDARD|DEEP> [--high-stakes] [--autonomy L0|L1|L2|L3] [--ref <work item>] --summary "<the restatement>"
 ```
 
-This creates `.agent/tasks/<date>-<slug>/` with `state.json` and `progress.md`, records the starting commit, and makes it the current task.
+This creates `.agent/tasks/<date>-<slug>/` with `state.json` and `progress.md`, records the starting commit, and makes it the current task. When the request names a work item (an issue number, a tracker key such as `PROJ-123`, `owner/repo#123` or an issue URL), pass it with `--ref`; it appears in the task status, the review input and the report.
 
 ## 4. Normalize the supporting data
 

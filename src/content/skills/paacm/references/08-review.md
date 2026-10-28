@@ -10,12 +10,13 @@
    ```
 
    This writes `.agent/tasks/<task-id>/review-input.md`, containing:
-   - the diff from the task's starting commit, including uncommitted changes;
-   - the acceptance criteria from `SPEC.md`, or the triage summary;
-   - the latest gate result;
-   - the project's reviewer checklist: the `## Reviewer checklist` section of `.agent/extensions/08-review.md`, when it exists.
+   - the work item (`--ref`) and the acceptance criteria from `SPEC.md`, or the triage summary;
+   - the evidence: the latest gate result and its full output (`gate.log`), the protected configuration the task changed or a merge brought in, and every other file you saved in the task folder;
+   - the changed files with their line counts;
+   - the project's reviewer checklist: the `## Reviewer checklist` section of `.agent/extensions/08-review.md`, when it exists (other sections of that file are for you, not the reviewer);
+   - the diff from the task's starting commit, including uncommitted changes and new files. Diffs of generated files and very large diffs are written to `review-diffs/` and listed, so the reviewer can read them.
 
-   It prints the file's path.
+   It prints the file's path. Reviewers have no shell: before running it, save any tool output they need (a report, a scan, a list of findings) as a file in the task folder, and it is listed under the evidence.
 3. **Delegate to `paacm-reviewer`:** "Review the change described in `<path to review-input.md>`." When the diff adds or changes error handling (try/catch or except blocks, fallbacks, default values on failure, retries), also delegate to `paacm-silent-failure-hunter` with the same file. Run any further reviewers the project's extension names on the same file. Give them nothing else. In particular, do not pass your own explanation of why the change is right; the reviewer must judge the diff and the evidence, not your narrative.
 4. **Resolve the findings.** `paacm-reviewer` reports only correctness bugs, unmet acceptance criteria and out-of-scope changes; `paacm-silent-failure-hunter` reports only failures the changed code can hide. Each finding has a file, a line and evidence.
    - For each finding, either fix it (back to phase 6, then the gate again) or record why it is wrong: `paacm task log "review finding <n> rejected: <reason>"`.

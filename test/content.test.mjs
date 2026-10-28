@@ -159,3 +159,20 @@ test('the skills explain project extensions, and verify and review read theirs',
   assert.match(content.agents.get('paacm-reviewer.md'), /project reviewer checklist/)
   assert.match(content.agentsBlock, /PAACM 3, the Verified Single-Writer Loop/)
 })
+
+test('the instructions cover every file change, end tasks through the runtime and avoid compound commands', () => {
+  const ref = (name) => content.skills.get('paacm').get(`references/${name}`)
+  for (const text of [content.agentsBlock, pluginCoreRules(content)]) {
+    assert.match(text, /changes files in the repository \(code, tests, configuration or documentation\)/)
+    assert.match(text, /8\. \*\*Follow the phases to the end\.\*\*[^\n]*`paacm task phase <phase>`[^\n]*`REPORT\.md` and `paacm task done`[^\n]*not joined to others with `;`, `&&` or a pipe/)
+  }
+  assert.match(content.skills.get('paacm').get('SKILL.md'), /^description: [^\n]*code, tests, configuration or documentation/m)
+  assert.doesNotMatch(ref('context.md'), /; echo "exit \$\?"/, 'no compound command is recommended')
+  assert.match(ref('context.md'), /paacm gate --quiet/)
+  assert.match(ref('07-verify.md'), /paacm gate --quiet[\s\S]*\*\*A missing tool\.\*\*[\s\S]*trigger 2/)
+  assert.match(ref('05-tests-first.md'), /\*\*Make the tests final before they freeze\.\*\*[\s\S]*formatter and linter fixers[\s\S]*exception lists/)
+  assert.match(ref('08-review.md'), /Reviewers have no shell[^\n]*save any tool output/)
+  assert.match(ref('09-deliver.md'), /`REPORT\.md` begins with `OUTCOME: done`/)
+  assert.match(ref('01-intake-triage.md'), /\[--ref <work item>\]/)
+  assert.match(ref('templates/REPORT.md'), /^WORK ITEM: /m)
+})

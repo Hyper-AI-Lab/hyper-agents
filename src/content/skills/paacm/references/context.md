@@ -6,13 +6,11 @@ Your context window is a budget. Everything in it costs tokens on every turn and
 
 - Let `paacm-explorer` find things; read only the line ranges it points to.
 - Search before you open: use code search and file-name search, not directory dumps or whole-file reads of large files.
-- Send long command output to a file and search it for the lines that matter:
-
-  ```sh
-  <command> > .agent/tasks/<task-id>/out.log 2>&1; echo "exit $?"
-  ```
-
-  Then grep the file for `error` or `fail` and quote only the relevant lines.
+- Keep long command output out of the window:
+  - Run the gate as `paacm gate --quiet`. It prints the check lines and the last lines of a failing check, and saves the full output in `.agent/tasks/<task-id>/gate.log`, which you can search.
+  - For other commands, use their own options to shorten the output, such as a test runner's failures-only reporter or a path filter.
+  - If a command has no such option, redirect its output into the task folder, `<command> > .agent/tasks/<task-id>/out.log 2>&1`, and search the file for `error` or `fail`. The IDE may ask you to approve the redirect.
+  - Run one command per call, from the repository root. A command joined to others with `;`, `&&` or a pipe, or prefixed with `cd … &&`, does not match the IDE's allow rules and needs approval each time.
 - Clear the context (start a new conversation) between unrelated tasks.
 - After two failed corrections of the same mistake, restart from the task files (`escalation.md`).
 - When the IDE compacts the conversation, the facts to keep are: the task identifier, the files modified, the verification commands, the open decisions and the next plan task.
