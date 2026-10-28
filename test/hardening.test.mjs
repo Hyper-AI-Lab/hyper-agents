@@ -194,6 +194,13 @@ test('shell guard: skipping git hooks needs approval', () => {
     'HUSKY_SKIP_HOOKS=1 git commit -m x',
     'SKIP=lint,test git commit -m x',
     'LEFTHOOK=0 git commit -m x',
+    'git commit --no-veri -m x',
+    'git -C app commit -n -m x',
+    'export HUSKY=0; git commit -m x',
+    'export HUSKY=0 && git commit -m x',
+    'export SKIP=lint',
+    'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null git commit -m x',
+    "export GIT_CONFIG_PARAMETERS=\"'core.hooksPath=/tmp/none'\"",
   ]
   for (const command of skips) {
     const v = evaluateCommand(command)
@@ -201,7 +208,7 @@ test('shell guard: skipping git hooks needs approval', () => {
     assert.equal(v.id, 'skip-git-hooks', command)
   }
   assert.equal(evaluateCommand('git push -n origin main')?.id, 'git-push', 'push -n is a dry run')
-  for (const command of ['git commit --amend -m "-n"', 'git commit --signoff -m x', 'git log -n 3', 'git config core.editor vim', 'SKIP=1 npm test']) {
+  for (const command of ['git commit --amend -m "-n"', 'git commit --signoff -m x', 'git log -n 3', 'git log --grep=commit -n 3', 'git config core.editor vim', 'SKIP=1 npm test']) {
     assert.equal(evaluateCommand(command), null, command)
   }
 })

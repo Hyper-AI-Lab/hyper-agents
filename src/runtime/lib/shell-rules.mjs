@@ -63,8 +63,23 @@ export const SHELL_RULES = [
   {
     decision: 'ask',
     id: 'skip-git-hooks',
-    pattern:
-      /\bgit\b[^\n;&|]*\s--no-verify\b|\bgit\b[^\n;&|]*\bcommit\b[^\n;&|]*\s-[a-z]*n[a-z]*(?=\s|$)|\bgit\b[^\n;&|]*\s-c\s*core\.hookspath\b|\bgit\b[^\n;&|]*\bconfig\b[^\n;&|]*\score\.hookspath\b|(?:^|[\s;&|(])(?:HUSKY=0|HUSKY_SKIP_HOOKS=1|SKIP=\S+|LEFTHOOK=0)\s[^\n;&|]*\bgit\b/i,
+    pattern: new RegExp(
+      [
+        // --no-verify, or an abbreviation git accepts, on any git command
+        String.raw`\bgit\b[^\n;&|]*\s--no-veri[a-z]*\b`,
+        // git commit -n (alone or in a cluster of short flags), after any global options
+        String.raw`\bgit(?:\s+(?:-[Cc]\s+\S+|-{1,2}[A-Za-z][\w-]*(?:=\S+)?))*\s+commit\b[^\n;&|]*\s-[a-z]*n[a-z]*(?=\s|$)`,
+        // another hooks directory, given on the command line or in the configuration
+        String.raw`\bgit\b[^\n;&|]*\s-c\s*core\.hookspath\b`,
+        String.raw`\bgit\b[^\n;&|]*\bconfig\b[^\n;&|]*\score\.hookspath\b`,
+        String.raw`\bGIT_CONFIG_(?:COUNT|KEY_\d+|PARAMETERS)=`,
+        // hook managers switched off through the environment
+        String.raw`(?:^|[\s;&|(])(?:export\s+)?(?:HUSKY=0|HUSKY_SKIP_HOOKS=1|LEFTHOOK=0)\b`,
+        String.raw`(?:^|[\s;&|(])export\s+SKIP=`,
+        String.raw`(?:^|[\s;&|(])SKIP=\S+\s[^\n;&|]*\bgit\b`,
+      ].join('|'),
+      'i',
+    ),
     reason: "skips or redirects the repository's git hooks (pre-commit and pre-push checks)",
   },
   {
