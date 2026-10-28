@@ -110,7 +110,11 @@ export async function runGate(projectDir, { tier, log = () => {}, sink } = {}) {
   }
 
   for (const w of audit.warnings) {
-    log(w.origin === 'merge' ? `NOTE protected configuration changed by a merge, not by this task's own commits: ${w.path}` : `WARN protected configuration changed in this task: ${w.path} (the report must state who approved it)`)
+    log(
+      w.origin === 'merge'
+        ? `WARN protected configuration changed in this task, through a merge: ${w.path} (the report must state where it was reviewed or who approved it)`
+        : `WARN protected configuration changed in this task: ${w.path} (the report must state who approved it)`,
+    )
   }
   if (audit.violations.length) {
     for (const v of audit.violations) log(`PROTECTED ${v.path}${v.detail ? `: ${v.detail}` : ' changed after the tests were approved'}`)

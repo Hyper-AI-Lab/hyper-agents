@@ -13,8 +13,9 @@
 //     completion report must account for each one. Each warning has an origin:
 //     "task" for a change the task made itself (its own commits, a merge's
 //     conflict resolution, a branch merged locally, uncommitted edits), "merge"
-//     for one that arrived only by merging a branch already on a remote, such
-//     as the base branch, where it was reviewed.
+//     for one that arrived only by merging commits a remote-tracking branch has.
+//     The origin is context for the report (where was it reviewed?), never an
+//     exemption: git cannot tell who made a remote-tracking ref.
 import { CONFIG_PATH, isProtectedConfig, isProtectedTest } from './config.mjs'
 import { changedSince, commitExists, ownChangesSince } from './git.mjs'
 import { CASE_INSENSITIVE_FS, matchesAny } from './glob.mjs'

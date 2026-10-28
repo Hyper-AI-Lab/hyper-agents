@@ -1,11 +1,12 @@
-// The audit separates protected configuration the task changed itself from
-// changes that arrived by merging another branch, so a report does not claim
-// approvals for changes the task never made. Violations stay strict: a merge
-// cannot bring in a change to an approved test.
+// The audit says which protected configuration arrived through a merge, so a
+// report can say where each change was reviewed instead of claiming approvals
+// for changes the task never made. Every such change is still a warning the
+// report accounts for, and violations stay strict: a merge cannot bring in a
+// change to an approved test.
 import assert from 'node:assert/strict'
 import path from 'node:path'
 import { test } from 'node:test'
-import { commitAll, git, repo, runtime, tempDir, writeFiles } from './helpers.mjs'
+import { commitAll, git, read, repo, runtime, tempDir, writeFiles } from './helpers.mjs'
 
 const pass = 'node -e "process.exit(0)"'
 const files = {
@@ -61,10 +62,11 @@ test('the audit tells configuration changed by a merge from the task’s own cha
     '.github/workflows/merged.yml': 'merge',
   })
   const text = runtime(dir, 'audit').stdout
-  assert.match(text, /WARN \.github\/workflows\/ci\.yml: protected configuration changed in this task/)
-  assert.match(text, /NOTE \.github\/workflows\/merged\.yml: protected configuration changed by a merge, not by this task's own commits/)
-  assert.match(text, /Audit clean \(3 configuration warning\(s\); 1 change\(s\) from merges\)/)
-  assert.match(runtime(dir, 'gate').stdout, /NOTE protected configuration changed by a merge[^\n]*merged\.yml/)
+  assert.match(text, /WARN \.github\/workflows\/ci\.yml: protected configuration changed in this task\n/)
+  assert.match(text, /WARN \.github\/workflows\/merged\.yml: protected configuration changed in this task, through a merge/)
+  assert.doesNotMatch(text, /NOTE/)
+  assert.match(text, /Audit clean \(4 configuration warning\(s\), 1 of them through a merge\)/)
+  assert.match(runtime(dir, 'gate').stdout, /WARN protected configuration changed in this task, through a merge: \.github\/workflows\/merged\.yml/)
 })
 
 test('a merge cannot bring in a change to an approved test', async (t) => {
@@ -93,4 +95,23 @@ test('a branch the writer made and merged itself does not turn its own changes i
   git(dir, 'merge', '-q', '--no-ff', '--no-edit', 'side')
   const origins = Object.fromEntries(JSON.parse(runtime(dir, 'audit', '--json').stdout).warnings.map((w) => [w.path, w.origin]))
   assert.deepEqual(origins, { '.claude/settings.json': 'task', '.github/workflows/ci.yml': 'task' })
+})
+
+test('a remote-tracking ref the writer makes itself does not exempt its own change from the report', async (t) => {
+  const dir = await repo(t, { files })
+  const main = git(dir, 'rev-parse', '--abbrev-ref', 'HEAD')
+  assert.equal(runtime(dir, 'task', 'start', '--slug', 'f', '--route', 'STANDARD', '--summary', 'x').code, 0)
+  await writeFiles(dir, { 'src/a.js': 'own\n' })
+  commitAll(dir, 'own work')
+  git(dir, 'switch', '-q', '-c', 'side', 'HEAD~1')
+  await writeFiles(dir, { '.github/workflows/ci.yml': 'weakened\n' })
+  const side = commitAll(dir, 'side work')
+  git(dir, 'switch', '-q', main)
+  git(dir, 'merge', '-q', '--no-edit', 'side')
+  git(dir, 'update-ref', 'refs/remotes/origin/side', side)
+  assert.match(runtime(dir, 'audit').stdout, /WARN \.github\/workflows\/ci\.yml: protected configuration changed in this task/)
+  await writeFiles(dir, { 'src/a.js': 'own again\n' })
+  const review = await read(dir, runtime(dir, 'task', 'review-input').stdout.trim())
+  assert.match(review, /\.github\/workflows\/ci\.yml: protected configuration changed in this task/)
+  assert.doesNotMatch(review, /reviewed there|not part of this change/)
 })

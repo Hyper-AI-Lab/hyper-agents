@@ -443,13 +443,12 @@ export async function writeReviewInput(projectDir, config) {
   ]
   if (await readTextOrNull(path.join(dir, 'gate.log')) !== null) evidence.push(`Full output: ${inTask('gate.log')}`)
   const warnings = auditTask(projectDir, config, state).warnings
-  const own = warnings.filter((w) => w.origin !== 'merge')
-  const merged = warnings.filter((w) => w.origin === 'merge')
-  if (own.length) {
-    evidence.push('', 'Protected configuration this task changed (the report must say who approved each change):', ...own.map((w) => `- ${w.path}: protected configuration changed in this task`))
-  }
-  if (merged.length) {
-    evidence.push('', 'Protected configuration that arrived by merging a branch already on a remote, such as the base branch (reviewed there, not part of this change):', ...merged.map((w) => `- ${w.path}: protected configuration changed by a merge`))
+  if (warnings.length) {
+    evidence.push(
+      '',
+      'Protected configuration changed since the task started (the report must say who approved each change, or where a merged one was reviewed):',
+      ...warnings.map((w) => `- ${w.path}: protected configuration changed in this task${w.origin === 'merge' ? ', through a merge' : ''}`),
+    )
   }
   const saved = (await taskFiles(dir)).filter((p) => !NOT_EVIDENCE.has(p) && !p.startsWith('inputs/') && !p.startsWith('review-diffs/'))
   if (saved.length) evidence.push('', 'Files the writer saved for reviewers (read each one):', ...saved.map((p) => `- ${inTask(p)}`))

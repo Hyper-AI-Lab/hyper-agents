@@ -218,7 +218,7 @@ Each phase lists its entry condition, the steps, the artifact it produces and it
   5. When the `claude-security` plugin is installed, high-stakes work also runs its scan of the changes at high effort; confirmed findings are fixed within the plan or end in `BLOCKED:`.
   6. A project MAY configure a mutation check in the `full` tier. When it fails, the writer MUST NOT edit the frozen tests; it reports the surviving mutants and stops with `BLOCKED:` (trigger 4) for the human to decide on more tests.
   7. The gate saves its full output in the task folder (`gate.log`), so the writer can keep its console output short (`paacm gate --quiet`) and the reviewer can read the evidence. A check that cannot find a command (exit 127) is reported as a missing tool: an environment problem for the human (trigger 2), not a reason to change code.
-  8. The gate's configuration warnings say whether the task changed the protected file itself or a merge of a branch already on a remote (such as the base branch) brought the change in; only the task's own changes need an approval in the report.
+  8. The gate's configuration warnings say whether a change to a protected file arrived through a merge of commits a remote-tracking branch has (such as the base branch). That is context, not an exemption: the report accounts for every warning, saying who approved the change or, for a merged one, where it was reviewed.
 - **Exit:** the gate is green at the route's tier and the diff audit is clean.
 - **Rule:** after **three consecutive gate failures on the same check** (the retry cap), the writer MUST stop and escalate (trigger 5) instead of trying again.
 
