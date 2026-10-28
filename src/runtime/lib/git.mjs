@@ -2,7 +2,7 @@
 // standard input closed unless a call passes input, so file names and arguments
 // are never interpreted.
 import { spawnSync } from 'node:child_process'
-import { rmSync } from 'node:fs'
+import { copyFileSync, existsSync, rmSync } from 'node:fs'
 import path from 'node:path'
 
 export const GIT_BUFFER = 64 * 1024 * 1024
@@ -107,19 +107,28 @@ export function ownChangesSince(cwd, base) {
 
 // The change from `base` to the working tree, committed, uncommitted and
 // untracked (unless git ignores the file): `files` ({ path, added, deleted,
-// binary }, in diff order) and the `diff` itself. It is computed in a temporary
-// index in the git directory, so the real index is never touched. Without a base
-// it compares with the empty tree. Throws when git fails or the output exceeds
-// the buffer (the error then has the code ENOBUFS).
+// binary }, in diff order), the `diff` itself, and `skipped`, the paths git could
+// not add (with its message). It is computed in a temporary index in the git
+// directory, started from a copy of the real index (so unchanged files are not
+// read again, and files git is told to skip stay skipped); the real index is
+// never touched. Without a base it compares with the empty tree. Throws when git
+// fails or the output exceeds the buffer (the error then has the code ENOBUFS).
 export function workingTreeDiff(cwd, base) {
   const gitDir = git(cwd, ['rev-parse', '--absolute-git-dir']).stdout.trim()
   const index = path.join(gitDir, `paacm-review-index-${process.pid}-${Date.now()}`)
   const env = { GIT_INDEX_FILE: index }
   try {
-    git(cwd, head(cwd) ? ['read-tree', 'HEAD'] : ['read-tree', '--empty'], { env })
-    git(cwd, ['add', '-A'], { env })
+    const realIndex = path.join(gitDir, 'index')
+    if (existsSync(realIndex)) copyFileSync(realIndex, index)
+    else git(cwd, head(cwd) ? ['read-tree', 'HEAD'] : ['read-tree', '--empty'], { env })
+    const added = git(cwd, ['add', '-A', '--ignore-errors'], { env, allowFail: true })
+    if (added.status !== 0 && added.status !== 1) throw new Error(`git add failed: ${(added.stderr || '').trim()}`)
+    const skipped = [...(added.stderr || '').matchAll(/^error: (.+)$/gm)].map((m) => m[1].trim())
     const from = base ?? git(cwd, ['hash-object', '-t', 'tree', '--stdin'], { input: '' }).stdout.trim()
-    const run = (extra) => git(cwd, ['diff', '--cached', '--no-ext-diff', '--no-renames', ...extra, from], { env }).stdout
+    // Fixed prefixes and unescaped non-ASCII names, so each section's header names
+    // its file whatever the user's diff settings; submodules as commit lines.
+    const diffArgs = ['-c', 'core.quotePath=false', 'diff', '--cached', '--no-ext-diff', '--no-renames', '--submodule=short', '--src-prefix=a/', '--dst-prefix=b/']
+    const run = (extra) => git(cwd, [...diffArgs, ...extra, from], { env }).stdout
     const files = run(['--numstat', '-z'])
       .split('\0')
       .filter(Boolean)
@@ -128,7 +137,7 @@ export function workingTreeDiff(cwd, base) {
         const binary = added === '-'
         return { path: rest.join('\t'), added: binary ? 0 : Number(added), deleted: binary ? 0 : Number(deleted), binary }
       })
-    return { files, diff: run(['--no-color']) }
+    return { files, diff: run(['--no-color']), skipped }
   } finally {
     rmSync(index, { force: true })
     rmSync(`${index}.lock`, { force: true })

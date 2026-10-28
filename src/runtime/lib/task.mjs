@@ -308,15 +308,60 @@ const DIFF_BUDGET = 512 * 1024
 const NOT_EVIDENCE = new Set(['state.json', 'progress.md', 'SPEC.md', 'PLAN.md', 'REPORT.md', 'features.json', 'review-input.md', 'gate.log'])
 const bytes = (text) => Buffer.byteLength(text, 'utf8')
 
-// One diff section per file, in diff order.
-function splitDiff(diff) {
-  return diff.split(/^(?=diff --git )/m).filter((s) => s !== '')
+// A C-style quoted string at the start of `s` (as git quotes unusual file
+// names), decoded, or null.
+function unquote(s) {
+  const escapes = { a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13, '"': 34, '\\': 92 }
+  const bytes = []
+  for (let i = 1; i < s.length; i++) {
+    const c = s[i]
+    if (c === '"') return Buffer.from(bytes).toString('utf8')
+    if (c !== '\\') {
+      bytes.push(...Buffer.from(c, 'utf8'))
+      continue
+    }
+    const n = s[++i]
+    if (n in escapes) bytes.push(escapes[n])
+    else if (/[0-7]/.test(n ?? '')) {
+      bytes.push(Number.parseInt(s.slice(i, i + 3), 8))
+      i += 2
+    } else return null
+  }
+  return null
+}
+
+// The file a "diff --git a/<path> b/<path>" header names; without renames both
+// paths are the same. Null when the header cannot be read.
+function headerPath(header) {
+  const rest = header.slice('diff --git '.length)
+  if (rest.startsWith('"')) {
+    const p = unquote(rest)
+    return p && p.startsWith('a/') ? p.slice(2) : null
+  }
+  const half = (rest.length - 5) / 2
+  const p = rest.slice(2, 2 + half)
+  return Number.isInteger(half) && rest === `a/${p} b/${p}` ? p : null
+}
+
+// The diff's sections grouped by file (a file whose type changed has two), or
+// null when a header cannot be read.
+function sectionsByPath(diff) {
+  const byPath = new Map()
+  for (const section of diff.split(/^(?=diff --git )/m)) {
+    if (section === '') continue
+    const end = section.indexOf('\n')
+    const p = headerPath(end === -1 ? section : section.slice(0, end))
+    if (p === null) return null
+    byPath.set(p, (byPath.get(p) ?? '') + section)
+  }
+  return byPath
 }
 
 // A code fence longer than any run of backticks in the text, so the text cannot
 // close it early.
 function fenceFor(text) {
-  const longest = Math.max(0, ...[...text.matchAll(/`+/g)].map((m) => m[0].length))
+  let longest = 0
+  for (const m of text.matchAll(/`+/g)) if (m[0].length > longest) longest = m[0].length
   return '`'.repeat(Math.max(3, longest + 1))
 }
 
@@ -344,10 +389,10 @@ export async function writeReviewInput(projectDir, config) {
     }
     throw error
   }
-  const sections = splitDiff(change.diff)
-  const split = sections.length === change.files.length
+  const byPath = sectionsByPath(change.diff)
+  const split = byPath !== null && byPath.size === change.files.length && change.files.every((f) => byPath.has(f.path))
   const generated = generatedPaths(projectDir, change.files.map((f) => f.path))
-  const entries = change.files.map((f, i) => ({ ...f, section: split ? sections[i] : '', reason: null })).filter((e) => !isTaskFile(e.path))
+  const entries = change.files.map((f) => ({ ...f, section: split ? byPath.get(f.path) : '', reason: null })).filter((e) => !isTaskFile(e.path))
   if (split) {
     for (const e of entries) {
       if (generated.has(e.path)) e.reason = 'generated'
@@ -411,6 +456,7 @@ export async function writeReviewInput(projectDir, config) {
     '## Changed files',
     '',
     entries.length ? entries.map((e) => `- ${e.path} (${stats(e)})`).join('\n') : '(none)',
+    ...(change.skipped.length ? ['', 'These paths could not be added to the review, so their changes are not in it:', ...change.skipped.map((m) => `- ${m}`)] : []),
     '',
     ...(checklist ? ['## Project reviewer checklist', '', 'Check each item against the diff as well, and report a violated item as a finding.', '', checklist, ''] : []),
     ...(separate.length

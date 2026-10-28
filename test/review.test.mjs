@@ -2,7 +2,7 @@
 // file must hold the whole change (new files too), stay readable when the change
 // has generated or very large files, and point to the evidence the writer saved.
 import assert from 'node:assert/strict'
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readdirSync, rmSync, symlinkSync } from 'node:fs'
 import path from 'node:path'
 import { test } from 'node:test'
 import { commitAll, git, read, repo, runtime, writeFiles } from './helpers.mjs'
@@ -84,4 +84,64 @@ test('a "## " line inside a code block does not end the reviewer checklist', asy
   const text = await reviewInput(dir)
   assert.match(text, /item one[\s\S]*## not a heading[\s\S]*item two/)
   assert.doesNotMatch(text, /writer only/)
+})
+
+test('a nested repository without commits does not stop the review input; it is named as not reviewed', async (t) => {
+  const dir = await started(t)
+  git(dir, 'init', '-q', path.join(dir, 'tools', 'scratch'))
+  await writeFiles(dir, { 'tools/scratch/notes.txt': 'scratch\n', 'src/fresh.js': 'export const fresh = 2\n' })
+  const text = await reviewInput(dir)
+  assert.match(text, /\+export const fresh = 2/)
+  assert.match(text, /could not be added to the review[^\n]*\n- 'tools\/scratch\/' does not have a commit checked out/)
+})
+
+test("a file git is told to skip (skip-worktree) keeps its local content out of the review input", async (t) => {
+  const dir = await repo(t, { files: { '.agent/checks.conf': `quick|unit|${pass}\n`, 'config/local.env': 'API_KEY=placeholder\n' } })
+  git(dir, 'update-index', '--skip-worktree', 'config/local.env')
+  await writeFiles(dir, { 'config/local.env': 'API_KEY=sk-live-SECRET\n', 'src/a.js': 'export const a = 9\n' })
+  runtime(dir, 'task', 'start', '--slug', 'rv', '--route', 'STANDARD', '--summary', 'x')
+  const text = await reviewInput(dir)
+  assert.doesNotMatch(text, /sk-live-SECRET|config\/local\.env/)
+  assert.match(text, /\+export const a = 9/)
+})
+
+test('a file that became a symbolic link keeps the per-file split', { skip: process.platform === 'win32' && 'symbolic links need privileges on Windows' }, async (t) => {
+  const dir = await started(t, { '.gitattributes': 'dist/** linguist-generated\n', 'link.txt': 'plain\n' })
+  rmSync(path.join(dir, 'link.txt'))
+  symlinkSync('src', path.join(dir, 'link.txt'))
+  await writeFiles(dir, { 'dist/bundle.js': 'generated output\n' })
+  const text = await reviewInput(dir)
+  assert.doesNotMatch(text, /could not be split/)
+  const separate = /^- dist\/bundle\.js \([^)]*generated\): (\S+)$/m.exec(text)
+  assert.ok(separate, 'the generated file is kept apart')
+  assert.match(await read(dir, separate[1]), /\+generated output/)
+  assert.match(text, /-plain\n[\s\S]*\+src\n/, 'both sections of the type change are in the diff')
+})
+
+test('a submodule is shown by its commits even when git is set to show it as a log', async (t) => {
+  const lib = await repo(t, { files: { 'x.txt': '1\n' } })
+  const dir = await repo(t, { files: { '.agent/checks.conf': `quick|unit|${pass}\n`, '.gitattributes': 'dist/** linguist-generated\n' } })
+  git(dir, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', lib, 'vendor/lib')
+  commitAll(dir, 'submodule')
+  git(dir, 'config', 'diff.submodule', 'log')
+  runtime(dir, 'task', 'start', '--slug', 'rv', '--route', 'STANDARD', '--summary', 'x')
+  await writeFiles(lib, { 'x.txt': '2\n' })
+  commitAll(lib, 'lib change')
+  git(path.join(dir, 'vendor', 'lib'), '-c', 'protocol.file.allow=always', 'pull', '-q', lib, 'HEAD')
+  await writeFiles(dir, { 'dist/bundle.js': 'generated output\n' })
+  const text = await reviewInput(dir)
+  assert.doesNotMatch(text, /could not be split/)
+  assert.match(text, /^\+Subproject commit [0-9a-f]+/m)
+  const separate = /^- dist\/bundle\.js \([^)]*generated\): (\S+)$/m.exec(text)
+  assert.ok(separate)
+  assert.match(await read(dir, separate[1]), /\+generated output/)
+})
+
+test('a diff with very many backtick runs gets a fence without overflowing', async (t) => {
+  const dir = await started(t)
+  const many = {}
+  for (let i = 0; i < 6; i++) many[`docs/ticks-${i}.md`] = `${'`x'.repeat(26_000)}\n`
+  await writeFiles(dir, many)
+  const text = await reviewInput(dir)
+  assert.match(text, /^`{3,}diff$/m)
 })
