@@ -57,7 +57,7 @@ The stop hook nudges once when the agent tries to stop with an open task whose g
 
 ### A check fails with exit code 127
 
-The check could not find a command (on Windows, exit code 9009): the tool is not installed where the agent runs, or not on the `PATH` of the IDE. The gate prints a hint, and the agent stops with `BLOCKED: trigger 2` instead of changing code. Install the tool and say "continue", or take the check out of the tier the task needs. `doctor` lists the check programs it cannot find.
+The check could not find a command (on Windows, cmd says the command "is not recognized as an internal or external command"): the tool is not installed where the agent runs, or not on the `PATH` of the IDE. The gate prints a hint, and the agent stops with `BLOCKED: trigger 2` instead of changing code. Install the tool and say "continue", or take the check out of the tier the task needs. `doctor` lists the check programs it cannot find.
 
 ### "PAACM could not record the session baseline"
 

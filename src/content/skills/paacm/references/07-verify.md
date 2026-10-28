@@ -20,7 +20,7 @@
 
    When the gate passes, it prints the next phase: review (phase 8) for STANDARD and DEEP, deliver (phase 9) for FAST, after `paacm task phase verifying` if you have not recorded it. A passing gate at a lower tier than the route's does not count for `paacm task done`.
 
-   **A missing tool.** A check that fails with exit 127 (9009 on Windows) could not find a command, and the gate says so. That is the environment, not the code: do not change code to get around it. The gate cannot pass without the tool, so list the check under CHECKS NOT RUN and stop with `BLOCKED:` trigger 2 (`paacm task block --trigger 2 --reason "<the missing tool>"`) to ask the human to install it.
+   **A missing tool.** A check that fails with exit 127 (on Windows, cmd's "is not recognized" message) could not find a command, and the gate says so. That is the environment, not the code: do not change code to get around it. The gate cannot pass without the tool, so list the check under CHECKS NOT RUN and stop with `BLOCKED:` trigger 2 (`paacm task block --trigger 2 --reason "<the missing tool>"`) to ask the human to install it.
 
 3. **STANDARD work:** also run `paacm gate --tier full` before delivery. If the `full` tier is not configured, record that under CHECKS NOT RUN.
 4. **Security-relevant diffs** (input handling, authentication, permissions, secrets, cryptography, dependency changes): also run `paacm gate --tier security`. Confirm that every new dependency exists in its registry under the exact name you used.

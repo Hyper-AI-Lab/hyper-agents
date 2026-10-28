@@ -65,10 +65,14 @@ export function runOne(projectDir, check, { timeoutSec, sink } = {}) {
 }
 
 // Whether a check failed because its shell could not find a command: exit 127
-// from a POSIX shell (also reported when the shell itself cannot start), 9009
-// from cmd.exe on Windows.
+// from a POSIX shell (also reported when the shell itself cannot start). On
+// Windows, `cmd /c` exits 1 and says the command "is not recognized" (9009 is
+// what a batch file sees); cmd prints that in the system's language, and only
+// the English message is recognized.
 export function isMissingTool(result) {
-  return result.exitCode === 127 || (process.platform === 'win32' && result.exitCode === 9009)
+  if (result.exitCode === 127) return true
+  if (process.platform !== 'win32') return false
+  return result.exitCode === 9009 || (result.exitCode === 1 && /is not recognized as an internal or external command/.test(result.outputTail ?? ''))
 }
 
 // Runs every check of the mode's tiers in manifest order and stops at the first
