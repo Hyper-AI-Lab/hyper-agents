@@ -28,7 +28,7 @@ The same check failed three times in a row, and the agent stopped instead of gue
 
 ### "PAACM: … is a test file, and the tests were approved at …"
 
-Test files are read-only once you approve the tests, so the agent cannot change the target to pass it. If a test really is wrong, the agent should stop with `BLOCKED: trigger 4` and show the conflict. Approve the specific change in the conversation. The agent then runs `paacm task reopen-tests --reason "<the change you approved>"`, which the IDE asks you to confirm, makes only that change, commits it and runs `paacm task approve-tests` again. `approve-tests` alone refuses to take a new baseline over a changed test, so a test edited some other way (through the shell, or brought in by a merge) also goes through this confirmation.
+Test files are read-only once you approve the tests, so the agent cannot change the target to pass it. If a test really is wrong, the agent should stop with `BLOCKED: trigger 4` and show the conflict. Approve the specific change in the conversation. The agent then runs `paacm task reopen-tests --reason "<the change you approved>"`, which the IDE asks you to confirm, makes only that change, commits it and runs `paacm task approve-tests` again. `approve-tests` alone refuses to take a new baseline over a changed test, so a test edited some other way (through the shell, or brought in by a merge) also goes through this confirmation. While a task is blocked with such a change, no other task can be started over it, in any worktree whose commit has the change, and another worktree's `approve-tests` refuses too: resume the blocked task to settle the change, or undo it.
 
 ### Edits to settings, hooks, CI or `.agent/checks.conf` are refused or need approval
 
@@ -65,7 +65,7 @@ The session start could not write to `paacm-sessions/` in the worktree's git dir
 
 ### Edits in a worktree are judged by that worktree
 
-Each linked worktree, next to the project or nested in it (for example under `.claude/worktrees/`), has its own `.agent/tasks/` and its own current task. The protect hook checks an edit against the worktree the file is in. An approved test in a worktree is read-only even when the agent's session started in the main checkout, and an ordinary file in a nested worktree is no longer treated as agent configuration. Moving into a worktree does not release the session's own task: the stop hook still checks it. If you open a folder that holds several checkouts (not itself a git repository), each checkout below it is protected by its own rules.
+Each linked worktree, next to the project or nested in it (for example under `.claude/worktrees/`), has its own `.agent/tasks/` and its own current task. The protect hook checks an edit against the worktree the file is in. An approved test in a worktree is read-only even when the agent's session started in the main checkout, and an ordinary file in a nested worktree is no longer treated as agent configuration. Moving into a worktree does not release the session's own task: the stop hook still checks it. If you open a folder that holds several checkouts (not itself a git repository), an edit in any checkout below it is checked against that checkout's rules wherever the agent's current directory is, and the stop hook also checks each checkout directly inside the folder that the session edited.
 
 ### `init` lists conflicts and writes nothing
 
