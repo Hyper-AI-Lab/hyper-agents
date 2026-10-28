@@ -3,8 +3,9 @@
 // approvals for changes the task never made. Violations stay strict: a merge
 // cannot bring in a change to an approved test.
 import assert from 'node:assert/strict'
+import path from 'node:path'
 import { test } from 'node:test'
-import { commitAll, git, repo, runtime, writeFiles } from './helpers.mjs'
+import { commitAll, git, repo, runtime, tempDir, writeFiles } from './helpers.mjs'
 
 const pass = 'node -e "process.exit(0)"'
 const files = {
@@ -23,17 +24,30 @@ function mergeWithConflict(dir, branch) {
   }
 }
 
+// A remote holding a branch `dev` with other people's work, fetched as origin/dev.
+function remoteWithDev(t, dir, main) {
+  const remote = path.join(tempDir(t), 'origin.git')
+  git(dir, 'init', '-q', '--bare', remote)
+  git(dir, 'remote', 'add', 'origin', remote)
+  git(dir, 'switch', '-q', '-c', 'dev')
+  return async (changes) => {
+    await writeFiles(dir, changes)
+    commitAll(dir, 'dev work')
+    git(dir, 'push', '-q', 'origin', 'dev')
+    git(dir, 'switch', '-q', main)
+    git(dir, 'branch', '-q', '-D', 'dev')
+    git(dir, 'fetch', '-q', 'origin')
+  }
+}
+
 test('the audit tells configuration changed by a merge from the task’s own changes', async (t) => {
   const dir = await repo(t, { files })
   const main = git(dir, 'rev-parse', '--abbrev-ref', 'HEAD')
-  git(dir, 'switch', '-q', '-c', 'dev')
-  await writeFiles(dir, { '.github/workflows/merged.yml': 'dev\n', '.github/workflows/c.yml': 'dev\n' })
-  commitAll(dir, 'dev work')
-  git(dir, 'switch', '-q', main)
+  await remoteWithDev(t, dir, main)({ '.github/workflows/merged.yml': 'dev\n', '.github/workflows/c.yml': 'dev\n' })
   assert.equal(runtime(dir, 'task', 'start', '--slug', 'm', '--route', 'STANDARD', '--summary', 'x').code, 0)
   await writeFiles(dir, { '.github/workflows/ci.yml': 'own\n', '.github/workflows/c.yml': 'main\n' })
   commitAll(dir, 'own work')
-  mergeWithConflict(dir, 'dev')
+  mergeWithConflict(dir, 'origin/dev')
   await writeFiles(dir, { '.github/workflows/c.yml': 'resolved\n' })
   commitAll(dir, 'merge dev')
   await writeFiles(dir, { '.cursor/hooks.json': '{}\n' })
@@ -66,4 +80,17 @@ test('a merge cannot bring in a change to an approved test', async (t) => {
   const r = runtime(dir, 'gate')
   assert.equal(r.code, 4, r.out)
   assert.match(r.out, /PROTECTED test\/a\.test\.js/)
+})
+
+test('a branch the writer made and merged itself does not turn its own changes into merge notes', async (t) => {
+  const dir = await repo(t, { files })
+  const main = git(dir, 'rev-parse', '--abbrev-ref', 'HEAD')
+  assert.equal(runtime(dir, 'task', 'start', '--slug', 's', '--route', 'STANDARD', '--summary', 'x').code, 0)
+  git(dir, 'switch', '-q', '-c', 'side')
+  await writeFiles(dir, { '.github/workflows/ci.yml': 'weakened\n', '.claude/settings.json': '{}\n' })
+  commitAll(dir, 'side work')
+  git(dir, 'switch', '-q', main)
+  git(dir, 'merge', '-q', '--no-ff', '--no-edit', 'side')
+  const origins = Object.fromEntries(JSON.parse(runtime(dir, 'audit', '--json').stdout).warnings.map((w) => [w.path, w.origin]))
+  assert.deepEqual(origins, { '.claude/settings.json': 'task', '.github/workflows/ci.yml': 'task' })
 })

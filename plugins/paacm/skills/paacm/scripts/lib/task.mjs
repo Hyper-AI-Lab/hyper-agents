@@ -355,7 +355,7 @@ export async function writeReviewInput(projectDir, config) {
     evidence.push('', 'Protected configuration this task changed (the report must say who approved each change):', ...own.map((w) => `- ${w.path}: protected configuration changed in this task`))
   }
   if (merged.length) {
-    evidence.push('', 'Protected configuration that arrived by merging another branch (reviewed there, not part of this change):', ...merged.map((w) => `- ${w.path}: protected configuration changed by a merge`))
+    evidence.push('', 'Protected configuration that arrived by merging a branch already on a remote, such as the base branch (reviewed there, not part of this change):', ...merged.map((w) => `- ${w.path}: protected configuration changed by a merge`))
   }
   try {
     const saved = (await listFiles(dir)).filter((p) => !NOT_EVIDENCE.has(p) && !p.startsWith('inputs/') && !p.startsWith('review-diffs/'))

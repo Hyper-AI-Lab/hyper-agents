@@ -85,14 +85,21 @@ export function changedSince(cwd, base) {
 
 // The paths a task changed itself since `base`: the files of the commits on its
 // own (first-parent) line, the files a merge commit changed itself (conflict
-// resolutions, from git's combined diff), and uncommitted changes. A change that
-// arrived only from a merged branch is not included.
+// resolutions, from git's combined diff), the files of any merged commit that no
+// remote-tracking branch has (a branch made and merged locally is the task's
+// own work), and uncommitted changes. Only a change that arrived from a branch
+// already on a remote, such as the base branch, is left out.
 export function ownChangesSince(cwd, base) {
   const own = new Set(uncommittedPaths(cwd))
   if (!head(cwd)) return own
-  const range = base ? `${base}..HEAD` : 'HEAD'
-  for (const kind of [['--no-merges'], ['--merges', '--cc']]) {
-    const r = git(cwd, ['log', '--first-parent', ...kind, '--format=', '--name-only', '-z', '--no-renames', range], { allowFail: true })
+  const range = base ? [`${base}..HEAD`] : ['HEAD']
+  const queries = [
+    ['--first-parent', '--no-merges', ...range],
+    ['--first-parent', '--merges', '--cc', ...range],
+    ['--no-merges', ...range, '--not', '--remotes'],
+  ]
+  for (const args of queries) {
+    const r = git(cwd, ['log', '--format=', '--name-only', '-z', '--no-renames', ...args], { allowFail: true })
     if (r.ok) for (const p of r.stdout.split('\0')) if (p !== '') own.add(p)
   }
   return own
