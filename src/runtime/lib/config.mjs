@@ -59,6 +59,16 @@ export const DEFAULT_CONFIG = Object.freeze({
 export const isProtectedTest = (rel, config) => matchesAny(rel, config.protect.tests, { ignoreCase: CASE_INSENSITIVE_FS })
 export const isProtectedConfig = (rel, config) => matchesAny(rel, config.protect.config, { ignoreCase: CASE_INSENSITIVE_FS })
 
+// The tier the gate runs for a task by default, and the lowest tier that can
+// close it: gate.deepTier for DEEP, gate.tier otherwise.
+export function tierForRoute(config, state) {
+  if (state && state.route === 'DEEP') return config.gate.deepTier
+  return config.gate.tier
+}
+
+// Whether a tier includes another; the tiers are cumulative (quick, full, security).
+export const tierAtLeast = (tier, required) => TIERS.indexOf(tier) >= TIERS.indexOf(required)
+
 export function validateConfig(config) {
   const problems = []
   if (!config || typeof config !== 'object' || Array.isArray(config)) return ['must be a JSON object']

@@ -1,13 +1,19 @@
 // Stop gate (Claude Code Stop, Cursor stop). The agent may not finish an
 // implementation while the gate fails. It may always stop to ask for approval
 // (before implementation), after `paacm task block`, or with a BLOCKED: report.
-import { GATE, recentGate, runGate } from '../lib/gate.mjs'
+// An open task whose gate is green, or a STANDARD or DEEP task that changed files
+// without recording its phases, is nudged once; the next stop is let through, so
+// an agent waiting for the human is never held.
+import { loadConfig, tierAtLeast, tierForRoute } from '../lib/config.mjs'
+import { GATE, recentGate, runGate, worktreeFingerprint } from '../lib/gate.mjs'
 import { changedSince, head, uncommittedPaths } from '../lib/git.mjs'
 import { detectTool, emit, projectDirFrom, readHookInput, runHook } from '../lib/hookio.mjs'
+import { referencePath } from '../lib/references.mjs'
 import { changedThisSession, sessionIdFrom } from '../lib/session.mjs'
-import { currentTask } from '../lib/task.mjs'
+import { currentTask, writeState } from '../lib/task.mjs'
 
 const GATED = new Set(['implementing', 'verifying', 'reviewing'])
+const NUDGE_DEDUP_MS = 15_000
 const isTaskFile = (p) => p === '.agent/tasks' || p.startsWith('.agent/tasks/')
 
 runHook(async () => {
@@ -40,22 +46,49 @@ runHook(async () => {
   }
   if (task.status === 'blocked' || task.status === 'done') return allow()
 
-  const fastWithChanges = task.status === 'triaged' && task.route === 'FAST' && changedSince(projectDir, task.baseCommit).some((p) => !isTaskFile(p))
-  if (!GATED.has(task.status) && !fastWithChanges) return allow()
+  // A nudge is given once: never on a continuation, and not again when the same
+  // stop arrives twice (Cursor also runs the Claude Code hooks it imports).
+  const nudge = async (kind, message) => {
+    if (continuation) return allow()
+    const fingerprint = worktreeFingerprint(projectDir)
+    const last = task.lastNudge
+    if (last && last.kind === kind && last.fingerprint === fingerprint && Date.now() - Date.parse(last.at) < NUDGE_DEDUP_MS) return allow()
+    task.lastNudge = { kind, fingerprint, at: new Date().toISOString() }
+    await writeState(projectDir, task)
+    return block(message)
+  }
+  const waiting = 'If you are waiting for the human (a question or an approval), say so in your answer and stop again.'
 
+  const changes = task.status === 'triaged' && changedSince(projectDir, task.baseCommit).some((p) => !isTaskFile(p))
+  if (changes && task.route !== 'FAST') {
+    return nudge(
+      'phases',
+      `PAACM: task ${task.id} (${task.route}) is still triaged, but files outside the task folder changed. Follow the phases: record each one with \`paacm task phase <phase>\`, which names the reference to read, get the approvals they ask for, and verify with \`paacm gate\`. ${waiting}`,
+    )
+  }
+  if (!GATED.has(task.status) && !changes) return allow()
+
+  const finish = () =>
+    nudge(
+      'finish',
+      `PAACM: the gate is green, but task ${task.id} is still ${task.status}. If the work is complete, finish it: ${task.route === 'FAST' ? '' : `review it first if you have not (${referencePath(projectDir, '08-review.md')}), then `}write REPORT.md and run \`paacm task done\` (${referencePath(projectDir, '09-deliver.md')}). ${waiting}`,
+    )
+
+  const config = await loadConfig(projectDir)
+  const required = tierForRoute(config, task)
   const g = task.lastGate
   const dirty = uncommittedPaths(projectDir).some((p) => !isTaskFile(p))
-  if (g && g.passed && g.head === head(projectDir) && !dirty && !g.dirty) return allow()
+  if (g && g.passed && g.head === head(projectDir) && !dirty && !g.dirty && tierAtLeast(g.tier, required)) return finish()
 
   const duplicate = recentGate(projectDir, task)
-  if (duplicate) {
-    if (duplicate.passed) return allow()
+  if (duplicate && tierAtLeast(duplicate.tier, required)) {
+    if (duplicate.passed) return finish()
     return block(`PAACM gate failed on this exact working tree a moment ago (check ${duplicate.failed}); see the previous gate message, fix the cause, then finish again.`)
   }
 
   const lines = []
   const result = await runGate(projectDir, { log: (l) => lines.push(l) })
-  if (result.code === GATE.PASSED) return allow()
+  if (result.code === GATE.PASSED) return finish()
 
   const log = lines.slice(-12).join('\n')
   if (result.code === GATE.UNCONFIGURED || result.code === GATE.CONFIG) {

@@ -5,8 +5,9 @@ import path from 'node:path'
 import { readJsonOrNull, readTextOrNull, stableJson, writeFileAtomic } from './fs.mjs'
 import { changedSince, diffSince, head, shortSha, uncommittedPaths } from './git.mjs'
 import { auditTask } from './audit.mjs'
-import { isProtectedTest } from './config.mjs'
+import { isProtectedTest, tierAtLeast, tierForRoute } from './config.mjs'
 import { readExtension, sectionOf } from './extensions.mjs'
+import { referencePath } from './references.mjs'
 
 export const TASKS_DIR = '.agent/tasks'
 export const ROUTES = ['FAST', 'STANDARD', 'DEEP']
@@ -216,8 +217,22 @@ function isTaskFile(p) {
   return p === '.agent/tasks' || p.startsWith('.agent/tasks/')
 }
 
-export async function finishTask(projectDir) {
+// Closes the task. It must have reached its last phase (8 for STANDARD and DEEP,
+// 7 for FAST), have approved tests, a gate that passed at the route's tier at the
+// current commit with nothing uncommitted, and a REPORT.md whose OUTCOME is done.
+export async function finishTask(projectDir, config) {
   const state = await requireCurrent(projectDir)
+  const ref = (file) => referencePath(projectDir, file)
+  if (state.route === 'FAST' ? !['verifying', 'reviewing'].includes(state.status) : state.status !== 'reviewing') {
+    throw new TaskError(
+      state.route === 'FAST'
+        ? `task ${state.id} is ${state.status}; a FAST task is done after phase 7, verify: run paacm task phase verifying and paacm gate (${ref('07-verify.md')})`
+        : `task ${state.id} is ${state.status}; a ${state.route} task is done after phase 8, review: run paacm task phase reviewing, then follow ${ref('08-review.md')}`,
+    )
+  }
+  if (!state.testsApprovedAt) {
+    throw new TaskError(`the tests were never approved, so the audit has no baseline: commit the tests and run paacm task approve-tests (${ref('05-tests-first.md')}), then paacm gate`)
+  }
   const sha = head(projectDir)
   const gate = state.lastGate
   if (!gate || !gate.passed) throw new TaskError('the latest gate did not pass; run paacm gate and fix what it reports')
@@ -225,6 +240,19 @@ export async function finishTask(projectDir) {
   const dirty = uncommittedPaths(projectDir).filter((p) => !isTaskFile(p))
   if (dirty.length) throw new TaskError(`uncommitted changes since the gate: ${dirty.slice(0, 10).join(', ')}; commit them and run paacm gate again`)
   if (gate.dirty) throw new TaskError('the gate passed on uncommitted changes; commit them and run paacm gate again')
+  const required = tierForRoute(config, state)
+  if (!tierAtLeast(gate.tier, required)) throw new TaskError(`the last gate ran the ${gate.tier} tier; a ${state.route} task needs ${required} or higher: run paacm gate`)
+  const reportRel = `${TASKS_DIR}/${state.id}/REPORT.md`
+  const report = await readTextOrNull(path.join(taskDir(projectDir, state.id), 'REPORT.md'))
+  if (report === null) throw new TaskError(`write ${reportRel} from the report template first (${ref('09-deliver.md')})`)
+  const outcome = (/^\s*OUTCOME:[ \t]*(.*)$/m.exec(report)?.[1] ?? '').trim()
+  if (outcome === '' || outcome.startsWith('<')) {
+    throw new TaskError(`${reportRel} has no filled-in OUTCOME line; begin it with "OUTCOME: done — <one sentence>" (${ref('09-deliver.md')})`)
+  }
+  if (/^blocked\b/i.test(outcome)) {
+    throw new TaskError(`${reportRel} says blocked; close a blocked task with paacm task block --trigger <1-7> --reason "<text>" and end your turn with a BLOCKED: line`)
+  }
+  if (!/^done\b/i.test(outcome)) throw new TaskError(`the OUTCOME line of ${reportRel} must begin with "done" (it says "${outcome.slice(0, 40)}")`)
   state.status = 'done'
   await writeState(projectDir, state)
   await appendProgress(projectDir, state.id, `done at ${shortSha(sha)}`)

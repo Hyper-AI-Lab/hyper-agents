@@ -79,7 +79,8 @@ test('stop gate: Claude Code is blocked while the gate fails and released when i
   assert.equal(stop({ last_assistant_message: 'BLOCKED: trigger 5 — unit fails' }).json, null, 'a BLOCKED report may always stop')
   await writeFiles(dir, { '.agent/checks.conf': `quick|unit|${pass}\n` })
   commitAll(dir)
-  assert.equal(stop().json, null)
+  assert.match(stop().json.reason, /gate is green, but task .* is still implementing/, 'released from the gate, then nudged once to finish')
+  assert.equal(stop({ stop_hook_active: true }).json, null)
 })
 
 test('stop gate: at the retry cap the agent is told to block instead of trying again', async (t) => {

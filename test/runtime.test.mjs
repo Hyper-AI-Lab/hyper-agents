@@ -104,6 +104,9 @@ test('task done requires a passing gate at the current commit with a clean tree'
   const dir = await project(t)
   const id = `${today()}-done`
   runtime(dir, 'task', 'start', '--slug', 'done', '--route', 'FAST', '--summary', 'x')
+  runtime(dir, 'task', 'approve-tests')
+  runtime(dir, 'task', 'phase', 'verifying')
+  await writeFiles(dir, { [`.agent/tasks/${id}/REPORT.md`]: 'OUTCOME: done — a is 2\n' })
   assert.match(runtime(dir, 'task', 'done').stderr, /latest gate did not pass/)
   await writeFiles(dir, { 'src/a.js': 'export const a = 2\n' })
   assert.equal(runtime(dir, 'gate').code, 0)

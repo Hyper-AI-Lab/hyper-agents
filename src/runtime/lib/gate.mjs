@@ -6,7 +6,7 @@
 import path from 'node:path'
 import { auditTask } from './audit.mjs'
 import { MANIFEST_PATH, missingTiers, parseManifest } from './checks.mjs'
-import { loadConfig, TIERS } from './config.mjs'
+import { loadConfig, TIERS, tierForRoute } from './config.mjs'
 import { readTextOrNull, sha256 } from './fs.mjs'
 import { git, head, uncommittedPaths } from './git.mjs'
 import { runChecks } from './runner.mjs'
@@ -40,10 +40,7 @@ export function recentGate(projectDir, state, withinMs = 15_000) {
   return g.fingerprint === worktreeFingerprint(projectDir) ? g : null
 }
 
-export function tierForRoute(config, state) {
-  if (state && state.route === 'DEEP') return config.gate.deepTier
-  return config.gate.tier
-}
+export { tierForRoute }
 
 export async function runGate(projectDir, { tier, log = () => {}, sink } = {}) {
   let config
@@ -60,7 +57,8 @@ export async function runGate(projectDir, { tier, log = () => {}, sink } = {}) {
     return { code: GATE.CONFIG, error: `unknown tier "${tier}"` }
   }
   const state = await currentTask(projectDir)
-  const effectiveTier = tier ?? tierForRoute(config, state)
+  const requiredTier = tierForRoute(config, state)
+  const effectiveTier = tier ?? requiredTier
   const audit = auditTask(projectDir, config, state)
   const record = async (passed, failed) => {
     if (!state) return null
@@ -83,13 +81,13 @@ export async function runGate(projectDir, { tier, log = () => {}, sink } = {}) {
     for (const v of audit.violations) log(`PROTECTED ${v.path}${v.detail ? `: ${v.detail}` : ' changed after the tests were approved'}`)
     log('GATE FAILED: protected test files or the gate configuration changed after the tests were approved. Undo those edits, or stop with BLOCKED: trigger 4 if the change is needed. After the human approves it, run paacm task reopen-tests --reason "<the approved change>" (the IDE asks them to confirm), commit the change, then run paacm task approve-tests.')
     const failures = await record(false, 'protected-paths')
-    return { code: GATE.PROTECTED, tier: effectiveTier, audit, results: [], gateFailures: failures, retryCap: config.gate.retryCap, task: state }
+    return { code: GATE.PROTECTED, tier: effectiveTier, requiredTier, audit, results: [], gateFailures: failures, retryCap: config.gate.retryCap, task: state }
   }
 
   const missing = missingTiers(checks, effectiveTier)
   if (missing.length) {
     log(`UNCONFIGURED: tier(s) ${missing.join(', ')} have no checks in ${MANIFEST_PATH}. Report them under CHECKS NOT RUN and ask the human to configure them.`)
-    return { code: GATE.UNCONFIGURED, tier: effectiveTier, audit, missing, results: [], gateFailures: state?.gateFailures ?? 0, retryCap: config.gate.retryCap, task: state }
+    return { code: GATE.UNCONFIGURED, tier: effectiveTier, requiredTier, audit, missing, results: [], gateFailures: state?.gateFailures ?? 0, retryCap: config.gate.retryCap, task: state }
   }
 
   const run = await runChecks(projectDir, checks, effectiveTier, { timeoutSec: config.checks.timeoutSec, sink, log })
@@ -100,6 +98,7 @@ export async function runGate(projectDir, { tier, log = () => {}, sink } = {}) {
   return {
     code: run.passed ? GATE.PASSED : GATE.FAILED,
     tier: effectiveTier,
+    requiredTier,
     audit,
     results: run.results,
     failed: run.failed,

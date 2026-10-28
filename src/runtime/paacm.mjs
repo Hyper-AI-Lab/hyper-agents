@@ -8,10 +8,11 @@ import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 import { auditTask } from './lib/audit.mjs'
 import { missingTiers } from './lib/checks.mjs'
-import { loadConfig, TIERS } from './lib/config.mjs'
+import { loadConfig, TIERS, tierAtLeast } from './lib/config.mjs'
 import { GATE, loadChecks, runGate } from './lib/gate.mjs'
 import { shortSha } from './lib/git.mjs'
 import { findProjectDir } from './lib/project.mjs'
+import { PHASE_REFERENCES, readNext, referencePath, referencesDir } from './lib/references.mjs'
 import { runChecks } from './lib/runner.mjs'
 import {
   approveTests,
@@ -90,6 +91,7 @@ async function taskCommand(args, out, projectDir) {
       })
       out(formatState(state))
       out(`Task folder: .agent/tasks/${state.id}/`)
+      out(`References: ${referencesDir(projectDir)}. Record each phase with paacm task phase <phase>, which names the reference to read. Finish with 09-deliver.md: write REPORT.md, then run paacm task done.`)
       return EXIT.OK
     }
     case 'status': {
@@ -103,6 +105,7 @@ async function taskCommand(args, out, projectDir) {
       if (rest.length !== 1) throw new UsageError('task phase takes exactly one phase name')
       const state = await setPhase(projectDir, rest[0])
       out(`Task ${state.id}: status ${state.status}`)
+      out(readNext(projectDir, PHASE_REFERENCES[state.status]))
       return EXIT.OK
     }
     case 'log': {
@@ -138,7 +141,7 @@ async function taskCommand(args, out, projectDir) {
     }
     case 'done': {
       if (rest.length) throw new UsageError('task done takes no arguments')
-      const state = await finishTask(projectDir)
+      const state = await finishTask(projectDir, await loadConfig(projectDir))
       out(`Task ${state.id} is done.`)
       return EXIT.OK
     }
@@ -154,6 +157,15 @@ async function taskCommand(args, out, projectDir) {
 }
 
 class UsageError extends Error {}
+
+// What a passing gate leads to for the current task.
+function afterGate(projectDir, result) {
+  const task = result.task
+  if (!task || ['done', 'blocked'].includes(task.status)) return null
+  if (!tierAtLeast(result.tier, result.requiredTier)) return `This was the ${result.tier} tier; a ${task.route} task needs a passing gate at ${result.requiredTier} or higher before paacm task done.`
+  if (task.route !== 'FAST' && task.status !== 'reviewing') return `Next: phase 8, review: run paacm task phase reviewing, then read ${referencePath(projectDir, '08-review.md')}.`
+  return `Next: phase 9, deliver: read ${referencePath(projectDir, '09-deliver.md')}, write REPORT.md, then run paacm task done.`
+}
 
 export async function run(argv, { out = (l) => process.stdout.write(`${l}\n`), err = (l) => process.stderr.write(`${l}\n`), cwd = process.cwd() } = {}) {
   const [command, ...args] = argv
@@ -218,6 +230,10 @@ export async function run(argv, { out = (l) => process.stdout.write(`${l}\n`), e
           out(JSON.stringify(rest))
         }
         if (result.code === GATE.CONFIG) err(result.error)
+        if (!values.json && result.code === GATE.PASSED) {
+          const next = afterGate(projectDir, result)
+          if (next) out(next)
+        }
         if (!values.json) out(`paacm gate: exit ${result.code}`)
         return result.code
       }
