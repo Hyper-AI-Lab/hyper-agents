@@ -87,7 +87,7 @@ export async function runChecks(projectDir, checks, mode, { timeoutSec, sink, lo
     } else {
       log(`FAIL [${check.tier}] ${check.label} exit ${r.exitCode}${r.timedOut ? ` (timed out after ${timeoutSec}s)` : ''} (${secs}s)`)
       if (isMissingTool(r)) {
-        log(`HINT [${check.tier}] ${check.label}: a command was not found (exit ${r.exitCode}). This is the environment, not the code: install the missing tool, or record the check under CHECKS NOT RUN and ask the human (trigger 2).`)
+        log(`HINT [${check.tier}] ${check.label}: a command was not found (exit ${r.exitCode}). This is the environment, not the code: do not change code to get around it. Without the tool the gate cannot pass, so list the check under CHECKS NOT RUN and stop with BLOCKED: trigger 2 (paacm task block --trigger 2) to ask the human to install it.`)
       }
       break
     }

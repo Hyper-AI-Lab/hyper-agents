@@ -40,6 +40,7 @@ test('a check whose program is missing is reported as a missing tool, not as fai
   const r = runtime(dir, 'gate')
   assert.match(r.stdout, /HINT \[quick\] tool: a command was not found[\s\S]*not the code[\s\S]*CHECKS NOT RUN[\s\S]*trigger 2/)
   const stop = hook('stop-gate', { hook_event_name: 'Stop', stop_hook_active: false }, { projectDir: dir })
-  assert.match(stop.json.reason, /a command was not found[\s\S]*trigger 2/)
+  assert.match(stop.json.reason, /a command was not found[\s\S]*paacm task block --trigger 2[\s\S]*BLOCKED: line that asks the human to install it/)
   assert.doesNotMatch(stop.json.reason, /Fix the cause without editing tests/)
+  assert.doesNotMatch(stop.json.reason, /Ask the human to install the tool, or/, 'stopping to wait for a tool needs the block, not a plain question')
 })

@@ -142,3 +142,14 @@ test("stop gate: the phases nudge does not count the human's work in progress fr
   await writeFiles(dir, { 'src/b.js': 'the agent wrote this\n' })
   assert.match(stopGuidance(stop()), /still triaged/)
 })
+
+test('a FAST task is told to record phase 7 before it can be closed', async (t) => {
+  const dir = await project(t)
+  runtime(dir, 'task', 'start', '--slug', 'f7', '--route', 'FAST', '--summary', 'x')
+  runtime(dir, 'task', 'approve-tests')
+  const gate = runtime(dir, 'gate').stdout
+  assert.match(gate, /Next: record phase 7 with paacm task phase verifying, then phase 9/)
+  runtime(dir, 'task', 'phase', 'implementing')
+  const stop = hook('stop-gate', { hook_event_name: 'Stop', stop_hook_active: false }, { projectDir: dir })
+  assert.match(stopGuidance(stop), /record phase 7 with `paacm task phase verifying`, then write REPORT\.md/)
+})

@@ -178,7 +178,9 @@ function afterGate(projectDir, result) {
   if (!task || ['done', 'blocked'].includes(task.status)) return null
   if (!tierAtLeast(result.tier, result.requiredTier)) return `This was the ${result.tier} tier; a ${task.route} task needs a passing gate at ${result.requiredTier} or higher before paacm task done.`
   if (task.route !== 'FAST' && task.status !== 'reviewing') return `Next: phase 8, review: run paacm task phase reviewing, then read ${referencePath(projectDir, '08-review.md')}.`
-  return `Next: phase 9, deliver: read ${referencePath(projectDir, '09-deliver.md')}, write REPORT.md, then run paacm task done.`
+  const deliver = `phase 9, deliver: read ${referencePath(projectDir, '09-deliver.md')}, write REPORT.md, then run paacm task done.`
+  if (task.route === 'FAST' && !['verifying', 'reviewing'].includes(task.status)) return `Next: record phase 7 with paacm task phase verifying, then ${deliver}`
+  return `Next: ${deliver}`
 }
 
 export async function run(argv, { out = (l) => process.stdout.write(`${l}\n`), err = (l) => process.stderr.write(`${l}\n`), cwd = process.cwd() } = {}) {

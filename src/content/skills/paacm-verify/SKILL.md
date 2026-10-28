@@ -14,7 +14,7 @@ If `.agent/extensions/07-verify.md` exists, read it first and follow it together
 1. **Run the gate:** `paacm gate --quiet`, on its own (no pipe, no `;`). It audits protected paths and runs the check tier for the current task's route; `--quiet` prints the check lines and a failing check's last lines, and with a task the full output is saved as `gate.log` in the task folder. Without a current task it runs the `quick` tier. Add `--tier full` before delivering STANDARD work, and `--tier security` for security-relevant changes.
 2. **Read the exit code:**
    - **0:** passed.
-   - **1:** a check failed. Fix the cause and run the gate again. If the check exited 127 (9009 on Windows), a command was not found: that is the environment, not the code; record it as not run and ask the human for the tool.
+   - **1:** a check failed. Fix the cause and run the gate again. If the check exited 127 (9009 on Windows), a command was not found: that is the environment, not the code. Record the check as not run and stop with `BLOCKED:` trigger 2 to ask the human for the tool.
    - **3:** a tier has no checks. Record it as not run and tell the human it needs configuring.
    - **4:** a protected path changed. Undo the change, or escalate if the change is needed.
 3. **After three consecutive failures of the same check, stop and escalate** (trigger 5) instead of trying again.

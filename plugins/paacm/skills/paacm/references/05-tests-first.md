@@ -20,7 +20,7 @@
    paacm task approve-tests
    ```
 
-   This records the current commit as `testsApprovedAt` and moves the task to `implementing`. Run it even on FAST tasks that rely on existing tests, before you change anything, so the existing tests are protected too. `paacm task done` refuses a task whose tests were never approved.
+   This records the current commit as `testsApprovedAt`, and moves a task in `testing` to `implementing`. Run it even on FAST tasks that rely on existing tests, before you change anything, so the existing tests are protected too. `paacm task done` refuses a task whose tests were never approved.
 
 **From this point on, test files, CI configuration, `.agent/checks.conf` and agent configuration are read-only to you.** The protect hook refuses edits to them, and `paacm audit` reports any change made by other means (including shell commands). If a test turns out to contradict the specification, or a legitimate test change is needed:
 
