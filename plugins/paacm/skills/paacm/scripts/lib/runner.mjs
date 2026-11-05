@@ -64,15 +64,31 @@ export function runOne(projectDir, check, { timeoutSec, sink } = {}) {
   })
 }
 
-// Whether a check failed because its shell could not find a command: exit 127
+// The commands a shell said it could not find, from the check's last output:
+// dash ("sh: 1: x: not found"), bash ("x: command not found", "x: No such file
+// or directory"), zsh ("command not found: x") and cmd ("'x' is not recognized").
+function notFoundNames(output) {
+  const names = []
+  for (const m of output.matchAll(/([^\s:'"`]+): (?:command )?not found\b/g)) names.push(m[1])
+  for (const m of output.matchAll(/([^\s:'"`]+): No such file or directory\b/g)) names.push(m[1])
+  for (const m of output.matchAll(/(?:command not found|no such file or directory): ([^\s'"`]+)/gi)) names.push(m[1])
+  for (const m of output.matchAll(/'([^']+)' is not recognized as an internal or external command/g)) names.push(m[1])
+  return names
+}
+
+// Whether a check failed because its shell could not find a program: exit 127
 // from a POSIX shell (also reported when the shell itself cannot start). On
 // Windows, `cmd /c` exits 1 and says the command "is not recognized" (9009 is
 // what a batch file sees); cmd prints that in the system's language, and only
-// the English message is recognized.
+// the English message is recognized. A command named by a path (`./build.sh`,
+// `scripts/x`) is a file of the project, not a tool to install: a change may
+// have removed or renamed it, so that failure is an ordinary one.
 export function isMissingTool(result) {
-  if (result.exitCode === 127) return true
-  if (process.platform !== 'win32') return false
-  return result.exitCode === 9009 || (result.exitCode === 1 && /is not recognized as an internal or external command/.test(result.outputTail ?? ''))
+  const output = result.outputTail ?? ''
+  let missing = result.exitCode === 127
+  if (!missing && process.platform === 'win32') missing = result.exitCode === 9009 || (result.exitCode === 1 && /is not recognized as an internal or external command/.test(output))
+  if (!missing) return false
+  return !notFoundNames(output).some((name) => /[\\/]/.test(name))
 }
 
 // Runs every check of the mode's tiers in manifest order and stops at the first
@@ -91,7 +107,7 @@ export async function runChecks(projectDir, checks, mode, { timeoutSec, sink, lo
     } else {
       log(`FAIL [${check.tier}] ${check.label} exit ${r.exitCode}${r.timedOut ? ` (timed out after ${timeoutSec}s)` : ''} (${secs}s)`)
       if (isMissingTool(r)) {
-        log(`HINT [${check.tier}] ${check.label}: a command was not found (exit ${r.exitCode}). This is the environment, not the code: do not change code to get around it. Without the tool the gate cannot pass, so list the check under CHECKS NOT RUN and stop with BLOCKED: trigger 2 (paacm task block --trigger 2) to ask the human to install it.`)
+        log(`HINT [${check.tier}] ${check.label}: a command was not found (exit ${r.exitCode}). If it is a program that is not installed, this is the environment, not the code: do not change code to get around it. Without the tool the gate cannot pass, so list the check under CHECKS NOT RUN and stop with BLOCKED: trigger 2 (paacm task block --trigger 2) to ask the human to install it. If it is something the project provides (a script, or a package script's program) that this change removed or renamed, it is an ordinary failure: fix it.`)
       }
       break
     }

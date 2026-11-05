@@ -23,7 +23,6 @@ import { changedThisSession, editedCheckouts, sessionIdFrom } from '../lib/sessi
 import { currentTask, writeState } from '../lib/task.mjs'
 
 const GATED = new Set(['implementing', 'verifying', 'reviewing'])
-const NUDGE_DEDUP_MS = 15_000
 const isTaskFile = (p) => p === '.agent/tasks' || p.startsWith('.agent/tasks/')
 const ALLOW = { kind: 'allow' }
 const block = (text) => ({ kind: 'block', text })
@@ -41,7 +40,7 @@ function finishSteps(projectDir, task) {
 }
 
 const missingToolMessage = (label, details) =>
-  `PAACM gate could not run check ${label}: a command was not found.${details}\n\nThis is the environment, not the code, so do not change code to get around it. The task cannot pass the gate without the tool: run \`paacm task block --trigger 2 --reason "<the missing tool>"\` and end your turn with a BLOCKED: line that asks the human to install it.`
+  `PAACM gate could not run check ${label}: a command was not found.${details}\n\nIf it is a program that is not installed, this is the environment, not the code, so do not change code to get around it. The task cannot pass the gate without the tool: run \`paacm task block --trigger 2 --reason "<the missing tool>"\` and end your turn with a BLOCKED: line that asks the human to install it. If it is something the project provides (a script, or a package script's program) that this change removed or renamed, it is an ordinary failure: fix it.`
 
 runHook(async () => {
   const input = await readHookInput()
@@ -58,6 +57,15 @@ runHook(async () => {
   if (tool === 'cursor' && input.status && input.status !== 'completed') return respond(ALLOW)
   const lastMessage = typeof input.last_assistant_message === 'string' ? input.last_assistant_message : ''
   if (/^\s*BLOCKED:/m.test(lastMessage)) return respond(ALLOW)
+
+  // A gate that cannot run (a tier without checks, an invalid configuration):
+  // the agent cannot fix this by changing code, so it is told once.
+  const unverifiable = (log) =>
+    continuation
+      ? ALLOW
+      : guide(
+          `PAACM gate could not verify this task:\n${log}\n\nYou cannot fix this by changing code. List the missing checks under CHECKS NOT RUN in the report, and ask the human to configure .agent/checks.conf (or fix .agent/paacm.json). Use \`paacm task block --trigger 2 --reason "<what is missing>"\` if the task cannot be verified without it.`,
+        )
 
   // The decision for one project. `own` is the project the agent works in; only
   // there are uncommitted files without a task worth a nudge.
@@ -77,17 +85,19 @@ runHook(async () => {
     }
     if (task.status === 'blocked' || task.status === 'done') return ALLOW
 
-    // A nudge is given once: never on a continuation, and not again when the same
-    // stop arrives twice (Cursor also runs the Claude Code hooks it imports). The
-    // state is read again before writing: a gate this hook just ran has recorded
-    // its result there, which the task read above does not have.
+    // A nudge is given once: never on a continuation, and not again for the same
+    // working tree and phase, however much later the next stop comes (an agent
+    // waiting for the human stops at every turn; Cursor also runs the Claude Code
+    // hooks it imports). The state is read again before writing: a gate this hook
+    // just ran has recorded its result there, which the task read above does not
+    // have.
     const nudge = async (kind, message) => {
       if (continuation) return ALLOW
       const fingerprint = worktreeFingerprint(projectDir)
       const current = (await currentTask(projectDir)) ?? task
       const last = current.lastNudge
-      if (last && last.kind === kind && last.fingerprint === fingerprint && Date.now() - Date.parse(last.at) < NUDGE_DEDUP_MS) return ALLOW
-      current.lastNudge = { kind, fingerprint, at: new Date().toISOString() }
+      if (last && last.kind === kind && last.fingerprint === fingerprint && last.status === current.status) return ALLOW
+      current.lastNudge = { kind, fingerprint, status: current.status, at: new Date().toISOString() }
       await writeState(projectDir, current)
       return guide(message)
     }
@@ -111,13 +121,21 @@ runHook(async () => {
 
     const finish = () => nudge('finish', `PAACM: the gate is green, but task ${task.id} is still ${task.status}. If the work is complete, finish it: ${finishSteps(projectDir, task)}. ${WAITING}`)
 
-    const config = await loadConfig(projectDir)
+    let config
+    try {
+      config = await loadConfig(projectDir)
+    } catch (error) {
+      return unverifiable(`CONFIG ERROR: ${error.message}`)
+    }
     const required = tierForRoute(config, task)
     const g = task.lastGate
     const dirty = uncommittedPaths(projectDir).some((p) => !isTaskFile(p))
     if (g && g.passed && g.head === head(projectDir) && !dirty && !g.dirty && tierAtLeast(g.tier, required)) return finish()
 
-    const duplicate = recentGate(projectDir, task)
+    // On a continuation the agent only answered the previous stop, so a result for
+    // the same working tree counts however old it is; otherwise only a result from
+    // a moment ago, the same stop delivered twice.
+    const duplicate = recentGate(projectDir, task, continuation ? Infinity : undefined)
     if (duplicate && tierAtLeast(duplicate.tier, required)) {
       if (duplicate.passed) return finish()
       if (duplicate.missingTool) return block(missingToolMessage(duplicate.failed, ' See the previous gate output.'))
@@ -129,12 +147,7 @@ runHook(async () => {
     if (result.code === GATE.PASSED) return finish()
 
     const log = lines.slice(-12).join('\n')
-    if (result.code === GATE.UNCONFIGURED || result.code === GATE.CONFIG) {
-      if (continuation) return ALLOW
-      return guide(
-        `PAACM gate could not verify this task:\n${log}\n\nYou cannot fix this by changing code. List the missing checks under CHECKS NOT RUN in the report, and ask the human to configure .agent/checks.conf (or fix .agent/paacm.json). Use \`paacm task block --trigger 2 --reason "<what is missing>"\` if the task cannot be verified without it.`,
-      )
-    }
+    if (result.code === GATE.UNCONFIGURED || result.code === GATE.CONFIG) return unverifiable(log)
 
     const last = result.results?.length ? result.results[result.results.length - 1] : null
     const tail = last ? (last.outputTail || '').trim().split('\n').slice(-30).join('\n') : ''
@@ -149,10 +162,24 @@ runHook(async () => {
     )
   }
 
-  const outcomes = [await decide(primary, true)]
-  if (anchor !== primary) outcomes.push(await decide(anchor, false))
+  // One project's error never hides another project's result: it blocks the stop
+  // once with the error, so the agent cannot finish as if that project were
+  // verified, and the other projects are still judged.
+  async function judge(projectDir, own) {
+    try {
+      return await decide(projectDir, own)
+    } catch (error) {
+      if (continuation) return ALLOW
+      return block(
+        `PAACM stop gate could not check ${projectDir}: ${error && error.message ? error.message : String(error)}\n\nDo not finish as if this project were verified: run \`paacm gate\` there, and report the error to the human.`,
+      )
+    }
+  }
+
+  const outcomes = [await judge(primary, true)]
+  if (anchor !== primary) outcomes.push(await judge(anchor, false))
   if (worktreeRoot(anchor) === null) {
-    for (const dir of await editedCheckouts(anchor, sessionId)) if (dir !== primary) outcomes.push(await decide(dir, false))
+    for (const dir of await editedCheckouts(anchor, sessionId)) if (dir !== primary) outcomes.push(await judge(dir, false))
   }
   respond(outcomes.find((o) => o.kind === 'block') ?? outcomes.find((o) => o.kind === 'guide') ?? ALLOW)
 })

@@ -73,9 +73,17 @@ function commonDir(dir) {
   return process.platform === 'win32' || process.platform === 'darwin' ? real.toLowerCase() : real
 }
 
-// Whether two directories belong to worktrees of the same repository.
-export function sameRepository(a, b) {
+// Whether two directories belong to worktrees of the same repository. When git
+// cannot answer for a directory that is a worktree on disk (git not on the PATH,
+// or refusing the folder as unsafe), the answer is unknown: `strict` throws then,
+// for a caller that must not guess, and otherwise the answer is no.
+export function sameRepository(a, b, { strict = false } = {}) {
   if (realOrResolved(a) === realOrResolved(b)) return true
   const ca = commonDir(a)
-  return ca !== null && ca === commonDir(b)
+  const cb = commonDir(b)
+  if (ca !== null && cb !== null) return ca === cb
+  if (strict && worktreeRoot(a) !== null && worktreeRoot(b) !== null) {
+    throw new Error(`git could not tell whether ${a} and ${b} belong to the same repository (git rev-parse --git-common-dir failed). Check that git runs here and accepts these folders (safe.directory).`)
+  }
+  return false
 }

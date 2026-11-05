@@ -4,7 +4,7 @@ import { realpathSync } from 'node:fs'
 import { appendFile, mkdir, readdir, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { readJsonOrNull, readTextOrNull, stableJson, writeFileAtomic } from './fs.mjs'
-import { GIT_BUFFER, generatedPaths, git, head, shortSha, uncommittedPaths, workingTreeDiff } from './git.mjs'
+import { existsAt, GIT_BUFFER, generatedPaths, git, head, shortSha, uncommittedPaths, workingTreeDiff } from './git.mjs'
 import { auditTask } from './audit.mjs'
 import { isProtectedTest, loadConfig, tierAtLeast, tierForRoute } from './config.mjs'
 import { readExtension, sectionOf } from './extensions.mjs'
@@ -70,18 +70,28 @@ export async function appendProgress(projectDir, id, text) {
   await appendFile(path.join(taskDir(projectDir, id), 'progress.md'), line)
 }
 
-// The most recently updated task of the worktree, or null.
+// The most recently updated task of the worktree, or null. A tasks folder or a
+// task state that cannot be read is skipped with a warning on standard error, so
+// the human learns that a blocked task there was not checked.
 async function latestTask(projectDir) {
+  const warn = (what, error) => process.stderr.write(`paacm: warning: could not read ${what}, so a blocked task there is not checked: ${error.message}\n`)
   let latest = null
   let entries = []
   try {
     entries = await readdir(tasksDir(projectDir), { withFileTypes: true })
-  } catch {
+  } catch (error) {
+    if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') warn(tasksDir(projectDir), error)
     return null
   }
   for (const entry of entries) {
     if (!entry.isDirectory()) continue
-    const state = await readJsonOrNull(path.join(tasksDir(projectDir), entry.name, 'state.json')).catch(() => null)
+    const file = path.join(tasksDir(projectDir), entry.name, 'state.json')
+    let state = null
+    try {
+      state = await readJsonOrNull(file)
+    } catch (error) {
+      warn(file, error)
+    }
     if (state && state.updatedAt && (!latest || state.updatedAt > latest.updatedAt)) latest = state
   }
   return latest
@@ -113,14 +123,19 @@ function otherWorktrees(projectDir) {
 // the change is settled in the blocked task. The tasks checked are the latest one
 // of this worktree (with `own`) and the latest one of each other worktree whose
 // approved test commit this HEAD contains: the refusal follows the commit, not
-// one .agent/tasks folder.
+// one .agent/tasks folder. For another worktree's task only a file that existed
+// at the approval counts: a test added later was never frozen by it. A change
+// that arrived from the base branch still counts, since git cannot tell a
+// reviewed change from one the writer made a remote-tracking ref for; the
+// refusal names the blocked task and its worktree, where the human settles it.
 async function refuseOverBlockedTask(projectDir, config, { own, before }) {
   const dirs = [...(own ? [projectDir] : []), ...otherWorktrees(projectDir)]
   for (const dir of dirs) {
     const latest = await latestTask(dir)
     if (!latest || latest.status !== 'blocked' || !latest.testsApprovedAt) continue
     if (dir !== projectDir && !git(projectDir, ['merge-base', '--is-ancestor', latest.testsApprovedAt, 'HEAD'], { allowFail: true }).ok) continue
-    const changed = auditTask(projectDir, config, latest).violations.map((v) => v.path)
+    let changed = auditTask(projectDir, config, latest).violations.map((v) => v.path)
+    if (dir !== projectDir) changed = changed.filter((p) => existsAt(projectDir, latest.testsApprovedAt, p))
     if (!changed.length) continue
     const where = dir === projectDir ? '' : ` (in the worktree at ${dir})`
     throw new TaskError(
@@ -508,6 +523,9 @@ export async function writeReviewInput(projectDir, config) {
     '',
     entries.length ? entries.map((e) => `- ${e.path} (${stats(e)})`).join('\n') : '(none)',
     ...(change.skipped.length ? ['', 'These paths could not be added to the review, so their changes are not in it:', ...change.skipped.map((m) => `- ${m}`)] : []),
+    ...(change.withheld.length
+      ? ['', 'These untracked files look like keys or secrets, so their content is not in this review. Add them to .gitignore, or commit them if they belong to the change:', ...change.withheld.map((p) => `- ${p}`)]
+      : []),
     '',
     ...(checklist ? ['## Project reviewer checklist', '', 'Check each item against the diff as well, and report a violated item as a finding.', '', checklist, ''] : []),
     ...(separate.length
