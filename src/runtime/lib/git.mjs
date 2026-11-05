@@ -136,10 +136,13 @@ export function workingTreeDiff(cwd, base) {
     const added = git(cwd, ['add', '-A', '--ignore-errors'], { env, allowFail: true })
     if (added.status !== 0 && added.status !== 1) throw new Error(`git add failed: ${(added.stderr || '').trim()}`)
     const skipped = [...(added.stderr || '').matchAll(/^error: (.+)$/gm)].map((m) => m[1].trim())
-    const withheld = git(cwd, ['ls-files', '--others', '--exclude-standard', '-z'])
+    // The whole repository's untracked files, by repository-relative path, as the
+    // diff names them, whatever folder of the worktree the project is.
+    const top = topLevel(cwd) ?? cwd
+    const withheld = git(top, ['ls-files', '--others', '--exclude-standard', '-z'])
       .stdout.split('\0')
       .filter((p) => p !== '' && looksSecret(p))
-    if (withheld.length) git(cwd, ['update-index', '--force-remove', '-z', '--stdin'], { env, input: `${withheld.join('\0')}\0` })
+    if (withheld.length) git(top, ['update-index', '--force-remove', '-z', '--stdin'], { env, input: `${withheld.join('\0')}\0` })
     const from = base ?? git(cwd, ['hash-object', '-t', 'tree', '--stdin'], { input: '' }).stdout.trim()
     // Fixed prefixes and unescaped non-ASCII names, so each section's header names
     // its file whatever the user's diff settings; submodules as commit lines.

@@ -1,11 +1,12 @@
 // Release 3.5.1: fixes for what the reviewers of a project's upgrade to 3.5.0
 // found in the runtime. Each test failed before its fix.
 import assert from 'node:assert/strict'
-import { mkdir, readFile } from 'node:fs/promises'
+import { mkdir, readFile, symlink } from 'node:fs/promises'
 import path from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { test } from 'node:test'
 import { worktreeFingerprint } from '../src/runtime/lib/gate.mjs'
+import { isMissingTool } from '../src/runtime/lib/runner.mjs'
 import { evaluateCommand } from '../src/runtime/lib/shell-rules.mjs'
 import { commitAll, git, hook, read, readOrNull, repo, runtime, stopGuidance, tempDir, writeFiles } from './helpers.mjs'
 
@@ -193,4 +194,56 @@ test('a blocked task in another worktree is not held against a test file added a
   const refused = runtime(edited, 'task', 'start', '--slug', 'edited', '--route', 'FAST', '--summary', 'x')
   assert.equal(refused.code, 1, refused.out)
   assert.match(refused.stderr, /\(in the worktree at [^)]+\) is blocked[^\n]*changed since: test\/a\.test\.js\./)
+})
+
+// Found by a fresh-context review of the 3.5.1 fixes themselves.
+
+test('stop: an error on a continuation lets the stop through, but as a hook error the human sees', async (t) => {
+  const dir = await repo(t, { files: { ...files, '.agent/checks.conf': `quick|unit|${fail}\n` } })
+  approvedTask(dir, 'loop')
+  assert.equal(stop(dir).json?.decision, 'block')
+  await writeFiles(dir, { [`.agent/tasks/${await currentId(dir)}/state.json`]: '{\n' })
+  const r = stop(dir, { stop_hook_active: true })
+  assert.equal(r.code, 1, r.out)
+  assert.match(r.stderr, /PAACM stop gate could not check/)
+})
+
+test('gate: an untracked symbolic link loop neither breaks the fingerprint nor loses the result', { skip: process.platform === 'win32' ? 'symbolic links need privileges on Windows' : false }, async (t) => {
+  const dir = await repo(t, { files })
+  approvedTask(dir, 'link')
+  await symlink('loop', path.join(dir, 'loop'))
+  assert.doesNotThrow(() => worktreeFingerprint(dir))
+  const r = runtime(dir, 'gate')
+  assert.equal(r.code, 0, r.out)
+  assert.equal((await stateOf(dir)).lastGate.passed, true)
+})
+
+test('gate: a missing program named by a path outside the project, or after an unrelated message, is a missing tool', () => {
+  const project = path.resolve('/srv/project')
+  const result = (outputTail) => ({ exitCode: 127, outputTail })
+  assert.equal(isMissingTool(result('/bin/sh: 1: /opt/tools/bin/golangci-lint: not found\n'), project), true)
+  assert.equal(isMissingTool(result('cat: config/local.json: No such file or directory\n/bin/sh: 1: paacm-no-such-linter: not found\n'), project), true)
+  assert.equal(isMissingTool(result('/bin/sh: 1: ./scripts/missing.sh: not found\n'), project), false)
+  assert.equal(isMissingTool(result('sh: scripts/missing.sh: No such file or directory\n'), project), false)
+})
+
+test('review input withholds secret-named untracked files anywhere in the repository when the project is a sub-folder', async (t) => {
+  const dir = await repo(t, { files: { 'pkg/.agent/paacm.json': '{}\n', 'pkg/.agent/checks.conf': `quick|unit|${pass}\n`, 'pkg/src/a.js': 'a\n' } })
+  const pkg = path.join(dir, 'pkg')
+  approvedTask(pkg, 'sub')
+  await writeFiles(dir, { '.env': 'root-secret-marker\n', 'other/id_rsa': 'other-key-marker\n', 'pkg/.env': 'pkg-secret-marker\n' })
+  const r = runtime(pkg, 'task', 'review-input')
+  assert.equal(r.code, 0, r.out)
+  const text = await read(pkg, `.agent/tasks/${await currentId(pkg)}/review-input.md`)
+  for (const marker of ['root-secret-marker', 'other-key-marker', 'pkg-secret-marker']) assert.doesNotMatch(text, new RegExp(marker))
+  for (const name of ['- .env', '- other/id_rsa', '- pkg/.env']) assert.ok(text.includes(name), `${name} is listed`)
+})
+
+test("protect: the refusal when git cannot run names the folder and git's own message", posixOnly, async (t) => {
+  const dir = await repo(t, { files })
+  const sibling = path.join(tempDir(t), 'wt')
+  git(dir, 'worktree', 'add', '-q', '-b', 's', sibling)
+  const r = hook('protect', { hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: { file_path: path.join(sibling, 'src', 'a.js') } }, { projectDir: dir, env: { PATH: tempDir(t) } })
+  assert.notEqual(r.code, 0, r.out)
+  assert.match(r.stderr, /failed in [^:]+: [^\n]*ENOENT/)
 })

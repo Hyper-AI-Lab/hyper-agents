@@ -151,7 +151,7 @@ runHook(async () => {
 
     const last = result.results?.length ? result.results[result.results.length - 1] : null
     const tail = last ? (last.outputTail || '').trim().split('\n').slice(-30).join('\n') : ''
-    if (last && isMissingTool(last)) return block(missingToolMessage(last.label, ` The check exited ${last.exitCode}.\n\n${log}${tail ? `\n\nLast output of the check:\n${tail}` : ''}`))
+    if (last && isMissingTool(last, projectDir)) return block(missingToolMessage(last.label, ` The check exited ${last.exitCode}.\n\n${log}${tail ? `\n\nLast output of the check:\n${tail}` : ''}`))
     if (result.gateFailures >= result.retryCap) {
       return block(
         `PAACM gate failed ${result.gateFailures} times in a row; the retry cap (${result.retryCap}) is reached. Do not try another fix. Run \`paacm task block --trigger 5 --reason "<what still fails and why>"\`, write REPORT.md, and end your turn with a BLOCKED: line.\n\n${log}`,
@@ -164,15 +164,21 @@ runHook(async () => {
 
   // One project's error never hides another project's result: it blocks the stop
   // once with the error, so the agent cannot finish as if that project were
-  // verified, and the other projects are still judged.
+  // verified, and the other projects are still judged. On the continuation the
+  // stop is let through, so the agent is never held in a loop, but the error is
+  // reported as a hook error (standard error, exit 1), which the IDE shows the
+  // human.
   async function judge(projectDir, own) {
     try {
       return await decide(projectDir, own)
     } catch (error) {
-      if (continuation) return ALLOW
-      return block(
-        `PAACM stop gate could not check ${projectDir}: ${error && error.message ? error.message : String(error)}\n\nDo not finish as if this project were verified: run \`paacm gate\` there, and report the error to the human.`,
-      )
+      const text = `PAACM stop gate could not check ${projectDir}: ${error && error.message ? error.message : String(error)}`
+      if (continuation) {
+        process.stderr.write(`${text}\n`)
+        process.exitCode = 1
+        return ALLOW
+      }
+      return block(`${text}\n\nDo not finish as if this project were verified: run \`paacm gate\` there, and report the error to the human.`)
     }
   }
 
