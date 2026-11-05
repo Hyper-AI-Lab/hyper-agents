@@ -150,7 +150,7 @@ Run the same manifest in your CI, so that every pull request passes the same com
 With the plugin, the repository has no copy of the runtime; pin the kit's version instead:
 
 ```yaml
-- run: npx github:Hyper-AI-Lab/hyper-agents#v3.5.0 check --tier full
+- run: npx github:Hyper-AI-Lab/hyper-agents#v3.5.1 check --tier full
 ```
 
 Add `--quiet` to show only the check lines and the end of a failing check's output. Held-out acceptance tests for high-stakes work ([phase 7](../method/ALGORITHM.md#phase-7-verify)) also run in CI, outside the agent's workspace.

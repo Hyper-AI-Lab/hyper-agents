@@ -53,11 +53,17 @@ It closes only a finished task, and the message says what is missing:
 
 ### "The gate is green, but task … is still …"
 
-The stop hook nudges once when the agent tries to stop with an open task whose gate passes, and once when a STANDARD or DEEP task changed files without recording its phases. If the agent is waiting for your answer, it says so and stops again; the second stop is always let through. Claude Code shows a nudge as stop hook feedback, not as a hook error; only a failing gate is reported as a blocking error.
+The stop hook nudges once when the agent tries to stop with an open task whose gate passes, and once when a STANDARD or DEEP task changed files without recording its phases. If the agent is waiting for your answer, it says so and stops again; the second stop is always let through, and the nudge is not repeated while the working tree and the phase stay the same, however long you take to answer. Claude Code shows a nudge as stop hook feedback, not as a hook error; only a failing gate is reported as a blocking error.
 
 ### A check fails with exit code 127
 
 The check could not find a command (on Windows, cmd says the command "is not recognized as an internal or external command"): the tool is not installed where the agent runs, or not on the `PATH` of the IDE. The gate prints a hint, and the agent stops with `BLOCKED: trigger 2` instead of changing code. Install the tool and say "continue", or take the check out of the tier the task needs. `doctor` lists the check programs it cannot find.
+
+A command named by a path, such as `./scripts/build.sh`, is a file of the project, not a tool: when the shell cannot find it, a change probably removed or renamed it, and the gate reports an ordinary failure for the agent to fix.
+
+### "task … (in the worktree at …) is blocked, and these files frozen by its approved tests changed since"
+
+Another worktree of the same repository has a blocked task with approved tests, and one of the files those tests froze (a test, `.agent/checks.conf` or `.agent/paacm.json`) changed in a commit this worktree contains, for example through a merge of the base branch. PAACM does not let a new task start or approve tests over it, because that would let a frozen-file change through without you. The task's owner resumes it in that worktree (`paacm task resume <id>`), settles the change with you (`reopen-tests`, then `approve-tests`), and finishes or blocks it again. A test file added after the approval does not count. Do not leave blocked tasks behind on a shared machine.
 
 ### "PAACM could not record the session baseline"
 
