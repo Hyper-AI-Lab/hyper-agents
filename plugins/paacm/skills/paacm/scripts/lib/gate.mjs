@@ -3,6 +3,7 @@
 // task state. Exit codes: 0 passed, 1 a check failed, 2 invalid configuration,
 // 3 a required tier has no checks, 4 a protected test file or the gate's own
 // configuration changed after the tests were approved.
+import { lstatSync } from 'node:fs'
 import path from 'node:path'
 import { auditTask } from './audit.mjs'
 import { MANIFEST_PATH, missingTiers, parseManifest } from './checks.mjs'
@@ -22,10 +23,25 @@ export async function loadChecks(projectDir) {
 }
 
 // Identifies the exact state of the working tree: HEAD plus every uncommitted
-// change (tracked diffs and untracked files). Task files are excluded.
+// change (tracked diffs, and untracked files with their size and modification
+// time, as git's index records them, so a changed untracked file counts without
+// reading it; a symbolic link by its own entry, as git tracks it). A file that
+// cannot be inspected counts by its error code, so this never throws. Task files
+// are excluded.
 export function worktreeFingerprint(projectDir) {
   const tracked = git(projectDir, ['diff', '--no-color', 'HEAD', '--', '.', ':(exclude).agent/tasks'], { allowFail: true }).stdout
-  const untracked = git(projectDir, ['ls-files', '--others', '--exclude-standard', '-z'], { allowFail: true }).stdout
+  const untracked = git(projectDir, ['ls-files', '--others', '--exclude-standard', '-z'], { allowFail: true })
+    .stdout.split('\0')
+    .filter((p) => p !== '' && !p.startsWith('.agent/tasks/'))
+    .map((p) => {
+      try {
+        const s = lstatSync(path.join(projectDir, ...p.split('/')), { throwIfNoEntry: false })
+        return `${p}\t${s ? `${s.size}\t${s.mtimeMs}` : '-'}`
+      } catch (error) {
+        return `${p}\t!${error.code ?? 'error'}`
+      }
+    })
+    .join('\0')
   return sha256(`${head(projectDir) ?? ''}\0${tracked}\0${untracked}`)
 }
 
@@ -82,12 +98,19 @@ export async function runGate(projectDir, { tier, log = () => {}, sink } = {}) {
     keep(text)
     if (userSink) userSink(text)
   }
+  // The log is evidence, not the result: a log that cannot be written (a full
+  // disk, a directory in its place) is reported, and the gate's result stands.
   const saveLog = async () => {
     if (!state) return
-    log(`Full output: ${TASKS_DIR}/${state.id}/gate.log`)
+    const rel = `${TASKS_DIR}/${state.id}/gate.log`
+    log(`Full output: ${rel}`)
     const cut = dropped || transcript.length > LOG_LIMIT
     const text = cut ? `[… earlier output dropped; the last ${LOG_LIMIT} characters follow …]\n${transcript.slice(-LOG_LIMIT)}` : transcript
-    await writeFileAtomic(path.join(taskDir(projectDir, state.id), 'gate.log'), text)
+    try {
+      await writeFileAtomic(path.join(taskDir(projectDir, state.id), 'gate.log'), text)
+    } catch (error) {
+      log(`WARN could not save ${rel}, so the full output is lost: ${error.message}`)
+    }
   }
   const requiredTier = tierForRoute(config, state)
   const effectiveTier = tier ?? requiredTier
@@ -132,7 +155,7 @@ export async function runGate(projectDir, { tier, log = () => {}, sink } = {}) {
   }
 
   const run = await runChecks(projectDir, checks, effectiveTier, { timeoutSec: config.checks.timeoutSec, sink, log })
-  const failures = await record(run.passed, run.failed, run.results.some((r) => r.exitCode !== 0 && isMissingTool(r)))
+  const failures = await record(run.passed, run.failed, run.results.some((r) => r.exitCode !== 0 && isMissingTool(r, projectDir)))
   if (!run.passed && failures !== null && failures >= config.gate.retryCap) {
     log(`RETRY CAP REACHED: ${failures} consecutive failures. Stop trying; run paacm task block --trigger 5 --reason "<what fails>" and end your turn with BLOCKED.`)
   }

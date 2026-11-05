@@ -4,6 +4,7 @@
 // a bounded tail is kept for reports. A check that exceeds the timeout is killed
 // together with its child processes.
 import { spawn, spawnSync } from 'node:child_process'
+import path from 'node:path'
 import { tiersFor } from './checks.mjs'
 
 const TAIL_BYTES = 16 * 1024
@@ -64,15 +65,39 @@ export function runOne(projectDir, check, { timeoutSec, sink } = {}) {
   })
 }
 
-// Whether a check failed because its shell could not find a command: exit 127
+// The last command a shell said it could not find in the check's output, which
+// is the failing one: dash ("sh: 1: x: not found"), bash ("x: command not found",
+// "x: No such file or directory"), zsh ("command not found: x") and cmd ("'x' is
+// not recognized"). Null when no such message is found.
+function lastNotFound(output) {
+  let last = null
+  const patterns = [
+    /([^\s:'"`]+): (?:command )?not found\b/g,
+    /([^\s:'"`]+): No such file or directory\b/g,
+    /(?:command not found|no such file or directory): ([^\s'"`]+)/gi,
+    /'([^']+)' is not recognized as an internal or external command/g,
+  ]
+  for (const re of patterns) for (const m of output.matchAll(re)) if (!last || m.index > last.index) last = { index: m.index, name: m[1] }
+  return last ? last.name : null
+}
+
+// Whether a check failed because its shell could not find a program: exit 127
 // from a POSIX shell (also reported when the shell itself cannot start). On
 // Windows, `cmd /c` exits 1 and says the command "is not recognized" (9009 is
 // what a batch file sees); cmd prints that in the system's language, and only
-// the English message is recognized.
-export function isMissingTool(result) {
-  if (result.exitCode === 127) return true
-  if (process.platform !== 'win32') return false
-  return result.exitCode === 9009 || (result.exitCode === 1 && /is not recognized as an internal or external command/.test(result.outputTail ?? ''))
+// the English message is recognized. A command named by a path inside the
+// project (`./build.sh`, `scripts/x`) is a file of the project, not a tool to
+// install: a change may have removed or renamed it, so that failure is an
+// ordinary one. A path outside the project (`/opt/tools/bin/x`) is a tool.
+export function isMissingTool(result, projectDir) {
+  const output = result.outputTail ?? ''
+  let missing = result.exitCode === 127
+  if (!missing && process.platform === 'win32') missing = result.exitCode === 9009 || (result.exitCode === 1 && /is not recognized as an internal or external command/.test(output))
+  if (!missing) return false
+  const name = lastNotFound(output)
+  if (!name || !/[\\/]/.test(name) || !projectDir) return true
+  const rel = path.relative(path.resolve(projectDir), path.resolve(projectDir, name))
+  return rel === '' || rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)
 }
 
 // Runs every check of the mode's tiers in manifest order and stops at the first
@@ -90,7 +115,7 @@ export async function runChecks(projectDir, checks, mode, { timeoutSec, sink, lo
       log(`PASS [${check.tier}] ${check.label} (${secs}s)`)
     } else {
       log(`FAIL [${check.tier}] ${check.label} exit ${r.exitCode}${r.timedOut ? ` (timed out after ${timeoutSec}s)` : ''} (${secs}s)`)
-      if (isMissingTool(r)) {
+      if (isMissingTool(r, projectDir)) {
         log(`HINT [${check.tier}] ${check.label}: a command was not found (exit ${r.exitCode}). This is the environment, not the code: do not change code to get around it. Without the tool the gate cannot pass, so list the check under CHECKS NOT RUN and stop with BLOCKED: trigger 2 (paacm task block --trigger 2) to ask the human to install it.`)
       }
       break

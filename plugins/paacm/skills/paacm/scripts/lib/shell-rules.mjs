@@ -67,8 +67,10 @@ export const SHELL_RULES = [
       [
         // --no-verify, or an abbreviation git accepts, on any git command
         String.raw`\bgit\b[^\n;&|]*\s--no-veri[a-z]*\b`,
-        // git commit -n (alone or in a cluster of short flags), after any global options
-        String.raw`\bgit(?:\s+(?:-[Cc]\s+\S+|-{1,2}[A-Za-z][\w-]*(?:=\S+)?))*\s+commit\b[^\n;&|]*\s-[a-z]*n[a-z]*(?=[\s;&|<>()'"]|$)`,
+        // git commit -n (alone or in a cluster of short flags), after any global options.
+        // A bare -c or -C takes the next word; the other branch never reads them, so
+        // each option has one reading and the check stays linear.
+        String.raw`\bgit(?:\s+(?:-[Cc]\s+\S+|-{1,2}(?![Cc](?:\s|$))[A-Za-z][\w-]*(?:=\S+)?))*\s+commit\b[^\n;&|]*\s-[a-z]*n[a-z]*(?=[\s;&|<>()'"]|$)`,
         // another hooks directory, given on the command line or in the configuration
         String.raw`\bgit\b[^\n;&|]*\s-c\s*['"]?core\.hookspath\b`,
         String.raw`\bgit\b[^\n;&|]*\bconfig\b[^\n;&|]*[\s'"]core\.hookspath\b`,

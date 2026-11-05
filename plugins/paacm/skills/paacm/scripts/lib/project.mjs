@@ -65,17 +65,27 @@ function realOrResolved(p) {
   }
 }
 
-// The repository's shared git directory, as a real path, or null outside git.
+// The repository's shared git directory, as a real path (`dir`), or git's error
+// message (`error`) when git cannot say.
 function commonDir(dir) {
   const r = git(dir, ['rev-parse', '--git-common-dir'], { allowFail: true })
-  if (!r.ok) return null
+  if (!r.ok) return { dir: null, error: (r.stderr || '').trim() || `exit ${r.status}` }
   const real = realOrResolved(path.resolve(dir, r.stdout.trim()))
-  return process.platform === 'win32' || process.platform === 'darwin' ? real.toLowerCase() : real
+  return { dir: process.platform === 'win32' || process.platform === 'darwin' ? real.toLowerCase() : real, error: null }
 }
 
-// Whether two directories belong to worktrees of the same repository.
-export function sameRepository(a, b) {
+// Whether two directories belong to worktrees of the same repository. When git
+// cannot answer for a directory that is a worktree on disk (git not on the PATH,
+// or refusing the folder as unsafe), the answer is unknown: `strict` throws then,
+// for a caller that must not guess, and otherwise the answer is no.
+export function sameRepository(a, b, { strict = false } = {}) {
   if (realOrResolved(a) === realOrResolved(b)) return true
   const ca = commonDir(a)
-  return ca !== null && ca === commonDir(b)
+  const cb = commonDir(b)
+  if (ca.dir !== null && cb.dir !== null) return ca.dir === cb.dir
+  if (strict && worktreeRoot(a) !== null && worktreeRoot(b) !== null) {
+    const [failed, why] = ca.dir === null ? [a, ca.error] : [b, cb.error]
+    throw new Error(`git could not tell whether ${a} and ${b} belong to the same repository: git rev-parse --git-common-dir failed in ${failed}: ${why}. Check that git runs here and accepts these folders (safe.directory).`)
+  }
+  return false
 }

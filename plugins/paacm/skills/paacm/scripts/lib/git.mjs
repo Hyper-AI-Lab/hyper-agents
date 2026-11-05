@@ -52,6 +52,17 @@ export function commitExists(cwd, sha) {
   return git(cwd, ['cat-file', '-e', `${sha}^{commit}`], { allowFail: true }).ok
 }
 
+// Whether a repository-relative POSIX path existed in a commit.
+export function existsAt(cwd, sha, rel) {
+  return git(cwd, ['cat-file', '-e', `${sha}:${rel}`], { allowFail: true }).ok
+}
+
+// Untracked files whose names say they hold keys or secrets: the names the IDE
+// settings keep agents from reading (.env, .env.*, *.pem, *.key), certificate
+// stores and SSH private keys. Their content never goes into a review.
+const SECRET_NAMES = [/^\.env$/, /^\.env\./, /\.(?:pem|key|p12|pfx)$/i, /^id_(?:rsa|dsa|ecdsa|ed25519)(?:[._-].*)?$/]
+export const looksSecret = (rel) => SECRET_NAMES.some((re) => re.test(path.posix.basename(rel)))
+
 // Paths (POSIX, repository-relative) with uncommitted changes, including untracked
 // files. Renames report both the old and the new path.
 export function uncommittedPaths(cwd) {
@@ -107,8 +118,9 @@ export function ownChangesSince(cwd, base) {
 
 // The change from `base` to the working tree, committed, uncommitted and
 // untracked (unless git ignores the file): `files` ({ path, added, deleted,
-// binary }, in diff order), the `diff` itself, and `skipped`, the paths git could
-// not add (with its message). It is computed in a temporary index in the git
+// binary }, in diff order), the `diff` itself, `skipped`, the paths git could
+// not add (with its message), and `withheld`, untracked files left out because
+// their names say they hold secrets (`looksSecret`). It is computed in a temporary index in the git
 // directory, started from a copy of the real index (so unchanged files are not
 // read again, and files git is told to skip stay skipped); the real index is
 // never touched. Without a base it compares with the empty tree. Throws when git
@@ -124,6 +136,13 @@ export function workingTreeDiff(cwd, base) {
     const added = git(cwd, ['add', '-A', '--ignore-errors'], { env, allowFail: true })
     if (added.status !== 0 && added.status !== 1) throw new Error(`git add failed: ${(added.stderr || '').trim()}`)
     const skipped = [...(added.stderr || '').matchAll(/^error: (.+)$/gm)].map((m) => m[1].trim())
+    // The whole repository's untracked files, by repository-relative path, as the
+    // diff names them, whatever folder of the worktree the project is.
+    const top = topLevel(cwd) ?? cwd
+    const withheld = git(top, ['ls-files', '--others', '--exclude-standard', '-z'])
+      .stdout.split('\0')
+      .filter((p) => p !== '' && looksSecret(p))
+    if (withheld.length) git(top, ['update-index', '--force-remove', '-z', '--stdin'], { env, input: `${withheld.join('\0')}\0` })
     const from = base ?? git(cwd, ['hash-object', '-t', 'tree', '--stdin'], { input: '' }).stdout.trim()
     // Fixed prefixes and unescaped non-ASCII names, so each section's header names
     // its file whatever the user's diff settings; submodules as commit lines.
@@ -137,7 +156,7 @@ export function workingTreeDiff(cwd, base) {
         const binary = added === '-'
         return { path: rest.join('\t'), added: binary ? 0 : Number(added), deleted: binary ? 0 : Number(deleted), binary }
       })
-    return { files, diff: run(['--no-color']), skipped }
+    return { files, diff: run(['--no-color']), skipped, withheld }
   } finally {
     rmSync(index, { force: true })
     rmSync(`${index}.lock`, { force: true })

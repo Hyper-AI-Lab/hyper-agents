@@ -101,6 +101,9 @@ export function toProjectPath(projectDir, filePath) {
 //     in it, by the project at the same place in that worktree;
 //   - when the session's folder (`anchor`) is not in a git repository, a file in
 //     any checkout below it by that checkout's root.
+// It throws when git cannot say whether another worktree belongs to the same
+// repository, so that the protect hook, which fails closed, refuses the edit
+// instead of treating the file as outside every project.
 export function editLocation(projectDir, filePath, anchor = projectDir) {
   if (typeof filePath !== 'string' || filePath === '') return null
   const abs = realPath(path.resolve(projectDir, filePath))
@@ -113,7 +116,7 @@ export function editLocation(projectDir, filePath, anchor = projectDir) {
   }
   if (fileTree !== null && projectTree !== null) {
     if (fileTree === projectTree) return at(project) ?? at(fileTree)
-    if (sameRepository(fileTree, projectTree)) return at(path.join(fileTree, path.relative(projectTree, project))) ?? at(fileTree)
+    if (sameRepository(fileTree, projectTree, { strict: true })) return at(path.join(fileTree, path.relative(projectTree, project))) ?? at(fileTree)
   }
   if (fileTree !== null && worktreeRoot(path.resolve(anchor)) === null) return at(fileTree)
   return at(project)

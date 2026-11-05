@@ -1,5 +1,23 @@
 # Changelog
 
+## 3.5.1 — Fixes from a team's upgrade
+
+Reviewing a team project's upgrade to 3.5.0 found these problems in the runtime. Each fix is covered by a test in `test/review-fixes.test.mjs` that failed before it.
+
+- **An error no longer lets the agent stop unverified.** An invalid `.agent/paacm.json` crashed the stop hook, which is not configured to fail closed, so the turn ended without the gate; 3.4.1 blocked. It is now reported like the configuration errors the gate itself finds. An error while judging one project (the session's own, another worktree, a checkout below a non-git session folder) no longer discards the other projects' results: it blocks that stop once and names the error. On the continuation the stop is let through, as a hook error the IDE shows.
+- **A gate log that cannot be written no longer loses the result.** A full disk, or a directory named `gate.log`, made `paacm gate` crash after it had recorded the result. It now warns and keeps the result and the `paacm gate: exit` line. An untracked file that cannot be inspected, such as a symbolic link loop, no longer breaks the gate either.
+- **A missing script is not a missing tool.** Exit 127 for a command named by a path inside the project (`./scripts/build.sh`), which a change may have removed or renamed, is an ordinary failure again; only the failing command's own message counts. The verify instructions say so. A program that is not installed, also one named by a path outside the project, is still a missing tool.
+- **The protect hook fails closed when git cannot run.** With git not on the hook's `PATH`, or refusing the folder (`safe.directory`), an edit in a sibling worktree was taken to be outside every project and allowed. It is now refused, with git's own message and the folder it failed in.
+- **No second gate run and no repeated nudge for an unchanged working tree.** A stop that answers the finish nudge reuses a passing gate for the same working tree however old it is (a failing one is run again); before, a tree with uncommitted changes ran the whole gate again once 15 seconds had passed. A nudge is given once for a working tree and phase, not once every 15 seconds, so an agent waiting for the human is not nudged at every turn. The working-tree fingerprint now includes the size and modification time of untracked files.
+- **The review input keeps secrets out.** Untracked files named like secrets (`.env`, `.env.*`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, SSH private keys) are listed by name, anywhere in the repository; their content no longer goes to the reviewers.
+- **A test added after a blocked task's approval does not hold other worktrees.** Only files that existed when the tests were approved count. A change to them that arrived from the base branch still holds every worktree that has it, as in 3.5.0, because git cannot tell a reviewed change from one the writer made a remote-tracking ref for. The troubleshooting guide says how to settle it.
+- **A task state that cannot be read is reported.** When `task start` or `approve-tests` checks for blocked tasks, an unreadable `state.json` or tasks folder is skipped with a warning instead of silently.
+- **The shell guard checks long option lists in linear time.** A git command with many `-c` options made the hook-skipping pattern backtrack exponentially; about 40 of them exceeded the hook's timeout, and the command was refused.
+
+Not changed: when the session folder is not a git repository, the stop gate still runs the checks, and the post-edit hook the `postEdit` commands, of each checkout below it that the session edited. Making that opt-in is a change to the method, for a later release. The upgrade does not remove the session baselines that 3.4.x left in the temporary folder (`paacm-sessions` in the system's temporary directory); delete them when no 3.4.x session runs on the machine.
+
+**Upgrading.** `paacm upgrade` to 3.5.1; nothing to configure.
+
 ## 3.5.0 — Finishing, worktrees and shared machines
 
 Running 3.4.1 on a team project (several people on one server, linked worktrees, headless agent runs) showed where the runtime enforced less than the method asks. Each fix is covered by tests that failed before it ([ADR 0021](docs/method/adr/0021-finishing-worktrees-and-shared-machines.md)).
