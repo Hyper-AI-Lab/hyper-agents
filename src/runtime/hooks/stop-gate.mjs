@@ -40,7 +40,7 @@ function finishSteps(projectDir, task) {
 }
 
 const missingToolMessage = (label, details) =>
-  `PAACM gate could not run check ${label}: a command was not found.${details}\n\nIf it is a program that is not installed, this is the environment, not the code, so do not change code to get around it. The task cannot pass the gate without the tool: run \`paacm task block --trigger 2 --reason "<the missing tool>"\` and end your turn with a BLOCKED: line that asks the human to install it. If it is something the project provides (a script, or a package script's program) that this change removed or renamed, it is an ordinary failure: fix it.`
+  `PAACM gate could not run check ${label}: a command was not found.${details}\n\nThis is the environment, not the code, so do not change code to get around it. The task cannot pass the gate without the tool: run \`paacm task block --trigger 2 --reason "<the missing tool>"\` and end your turn with a BLOCKED: line that asks the human to install it.`
 
 runHook(async () => {
   const input = await readHookInput()
@@ -132,10 +132,13 @@ runHook(async () => {
     const dirty = uncommittedPaths(projectDir).some((p) => !isTaskFile(p))
     if (g && g.passed && g.head === head(projectDir) && !dirty && !g.dirty && tierAtLeast(g.tier, required)) return finish()
 
-    // On a continuation the agent only answered the previous stop, so a result for
-    // the same working tree counts however old it is; otherwise only a result from
-    // a moment ago, the same stop delivered twice.
-    const duplicate = recentGate(projectDir, task, continuation ? Infinity : undefined)
+    // A result from a moment ago is the same stop delivered twice. On a
+    // continuation the agent only answered the previous stop, so a passing result
+    // for the same working tree also counts however old it is; a failing one is
+    // run again, since the agent may have fixed what the fingerprint cannot see
+    // (an install, a service).
+    const lasting = continuation ? recentGate(projectDir, task, Infinity) : null
+    const duplicate = recentGate(projectDir, task) ?? (lasting && lasting.passed ? lasting : null)
     if (duplicate && tierAtLeast(duplicate.tier, required)) {
       if (duplicate.passed) return finish()
       if (duplicate.missingTool) return block(missingToolMessage(duplicate.failed, ' See the previous gate output.'))

@@ -247,3 +247,20 @@ test("protect: the refusal when git cannot run names the folder and git's own me
   assert.notEqual(r.code, 0, r.out)
   assert.match(r.stderr, /failed in [^:]+: [^\n]*ENOENT/)
 })
+
+test('stop: a continuation runs a failing gate again instead of reusing the old failure', async (t) => {
+  const flag = path.join(tempDir(t), 'ready').split(path.sep).join('/')
+  const check = `node -e "process.exit(require('fs').existsSync('${flag}') ? 0 : 1)"`
+  const dir = await repo(t, { files: { ...files, '.agent/checks.conf': `quick|unit|${check}\n` } })
+  approvedTask(dir, 'flaky')
+  await writeFiles(dir, { 'src/a.js': 'changed\n' })
+  assert.equal(stop(dir).json?.decision, 'block', 'the gate fails while the flag is missing')
+  await writeFiles(path.dirname(flag), { ready: 'yes\n' })
+  await editState(dir, (s) => {
+    s.lastGate.at = minuteAgo()
+  })
+  const r = stop(dir, { stop_hook_active: true })
+  assert.equal(r.code, 0, r.out)
+  assert.equal(r.json?.decision, undefined, `the gate ran again and passed: ${r.out}`)
+  assert.equal((await stateOf(dir)).lastGate.passed, true)
+})

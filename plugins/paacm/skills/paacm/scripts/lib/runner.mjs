@@ -116,7 +116,7 @@ export async function runChecks(projectDir, checks, mode, { timeoutSec, sink, lo
     } else {
       log(`FAIL [${check.tier}] ${check.label} exit ${r.exitCode}${r.timedOut ? ` (timed out after ${timeoutSec}s)` : ''} (${secs}s)`)
       if (isMissingTool(r, projectDir)) {
-        log(`HINT [${check.tier}] ${check.label}: a command was not found (exit ${r.exitCode}). If it is a program that is not installed, this is the environment, not the code: do not change code to get around it. Without the tool the gate cannot pass, so list the check under CHECKS NOT RUN and stop with BLOCKED: trigger 2 (paacm task block --trigger 2) to ask the human to install it. If it is something the project provides (a script, or a package script's program) that this change removed or renamed, it is an ordinary failure: fix it.`)
+        log(`HINT [${check.tier}] ${check.label}: a command was not found (exit ${r.exitCode}). This is the environment, not the code: do not change code to get around it. Without the tool the gate cannot pass, so list the check under CHECKS NOT RUN and stop with BLOCKED: trigger 2 (paacm task block --trigger 2) to ask the human to install it.`)
       }
       break
     }
